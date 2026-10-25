@@ -1,0 +1,13 @@
+node_modules/
+.npm-cache/
+out/
+src/engine/dist/
+release/
+vendor/git/
+vendor/*.zip
+.test-data/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example

@@ -1,0 +1,108 @@
+{
+  "name": "oopsmd",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local Markdown and LaTeX math notebook with deliberate Git history",
+  "author": "OopsMD",
+  "license": "MIT",
+  "type": "module",
+  "overrides": {
+    "katex": "$katex"
+  },
+  "main": "out/main/index.js",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "electron-vite dev --watch",
+    "debug": "electron-vite dev --watch --inspect=9229",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && electron-vite build",
+    "start": "electron-vite preview",
+    "test": "tsx --test tests/*.test.ts tests/*.test.tsx",
+    "test:smoke": "node scripts/smoke.mjs",
+    "test:safety": "node scripts/safety-smoke.mjs",
+    "test:dev": "node scripts/dev-smoke.mjs",
+    "prepare:git": "node scripts/prepare-git.mjs",
+    "pack": "npm run build && node scripts/check-git.mjs && electron-builder --dir --win --x64",
+    "dist": "npm run build && node scripts/check-git.mjs && electron-builder --win nsis --x64"
+  },
+  "build": {
+    "appId": "app.oopsmd.desktop",
+    "productName": "OopsMD",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/git",
+        "to": "git"
+      }
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "OopsMD-${version}-win-x64-setup.${ext}"
+    }
+  },
+  "dependencies": {
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/lang-markdown": "6.5.2",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/language-data": "6.5.2",
+    "@codemirror/legacy-modes": "6.5.5",
+    "@codemirror/search": "6.7.2",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/theme-one-dark": "6.1.3",
+    "@codemirror/view": "6.43.15",
+    "@tiptap/core": "3.32.0",
+    "@tiptap/extension-highlight": "3.32.0",
+    "@tiptap/extension-subscript": "3.32.0",
+    "@tiptap/extension-superscript": "3.32.0",
+    "@tiptap/extension-table": "3.32.0",
+    "@tiptap/extension-task-item": "3.32.0",
+    "@tiptap/extension-task-list": "3.32.0",
+    "@tiptap/pm": "3.32.0",
+    "@tiptap/starter-kit": "3.32.0",
+    "codemirror": "6.0.2",
+    "diff": "9.0.0",
+    "katex": "0.19.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-markdown": "10.1.0",
+    "rehype-highlight": "7.0.2",
+    "rehype-katex": "7.0.1",
+    "remark-gfm": "4.0.1",
+    "remark-math": "6.0.0",
+    "remark-parse": "11.0.0",
+    "remark-stringify": "11.0.0",
+    "unified": "11.0.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/katex": "0.16.8",
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "electron": "45.0.0",
+    "electron-builder": "26.15.3",
+    "electron-vite": "6.0.0",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  }
+}
