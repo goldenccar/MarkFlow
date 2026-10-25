@@ -1,4 +1,5 @@
 /** Format-neutral content contracts. Editing and identity transactions live in runtime.ts. */
+/** Object identity is stable; tree order and adapter-owned coordinates may change independently. */
 export type MarkId = string
 export type AssetId = string
 
@@ -21,7 +22,9 @@ export interface InlineFormat {
   script?: 'superscript' | 'subscript'; highlight?: string; link?: string
 }
 export interface TextRun { text: string; format?: InlineFormat }
-/** Optional payload vocabulary for future adapters; runtime tree ownership is MarkNode.children. */
+/** Optional payload vocabulary for future adapters; runtime tree ownership is MarkNode.children.
+ * A table adapter must declare rows as local references through EngineOptions.references.
+ */
 export type MarkContent =
   | { kind: 'text'; runs: TextRun[] }
   | { kind: 'image'; assetId: AssetId; alt: string }

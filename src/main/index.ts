@@ -242,10 +242,10 @@ function wireIPC() {
   handle('view:stop-find', async () => window.webContents.stopFindInPage('clearSelection'), false)
   ipcMain.on('app:close-ready', (event) => { trusted(event); allowClose = true; window.close() })
 }
-const captionOverlay = (theme: Settings['theme']) => ({ color: theme === 'dark' ? '#1b1e1c' : '#f6f7f5', symbolColor: theme === 'dark' ? '#e8ebe8' : '#242825', height: 40 })
+const captionOverlay = (theme: Settings['theme']) => ({ color: theme === 'dark' ? '#1b1e1c' : '#ecefea', symbolColor: theme === 'dark' ? '#e8ebe8' : '#242825', height: 40 })
 async function createWindow() {
   const settings = await getSettings(app.getPath('userData'))
-  window = new BrowserWindow({ width: 1440, height: 940, minWidth: 920, minHeight: 620, title: 'OopsMD', backgroundColor: settings.theme === 'dark' ? '#202123' : '#f6f6f3', titleBarStyle: 'hidden', titleBarOverlay: captionOverlay(settings.theme), autoHideMenuBar: true,
+  window = new BrowserWindow({ width: 1440, height: 940, minWidth: 920, minHeight: 620, title: 'OopsMD', backgroundColor: settings.theme === 'dark' ? '#202123' : '#f5f6f3', titleBarStyle: 'hidden', titleBarOverlay: captionOverlay(settings.theme), autoHideMenuBar: true,
     webPreferences: { preload: path.join(here, '../preload/index.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false } })
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-navigate', (event) => event.preventDefault())

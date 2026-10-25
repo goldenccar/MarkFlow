@@ -5,7 +5,14 @@ export { createMarkId } from './mark.js'
 export interface MarkInput<C> { id?: string; content: C; style?: MarkTypography; children?: MarkInput<C>[] }
 export interface MarkNode<C> { id: string; content: C; style: MarkTypography; children: MarkNode<C>[] }
 export interface MarkSnapshot<C> { revision: number; roots: MarkNode<C>[]; retiredIds: string[] }
-export interface EngineOptions<C> { idFactory?: () => string; validateContent?: (content: C) => boolean | void }
+/** Only same-document Mark references belong here; asset IDs and arbitrary text are not references. */
+export interface MarkReferences<C> {
+  get(content: C): readonly string[]
+  /** Map only declared references present in idMap; keep other references unchanged. */
+  remap(content: C, idMap: ReadonlyMap<string, string>): C
+}
+export interface EngineOptions<C> { idFactory?: () => string; validateContent?: (content: C) => boolean | void; references?: MarkReferences<C> }
+export interface MarkSnapshotEnvelope<C> { format: 'oops-mark'; schemaVersion: 1; snapshot: MarkSnapshot<C> }
 export interface ReconcileOptions<C> extends EngineOptions<C> { expectedRevision?: number }
 export interface TransactionOptions { expectedRevision?: number; group?: string; now?: number }
 export type TypographyPatch = { fontFamily?: string | null; fontSize?: number | null }
@@ -19,7 +26,7 @@ export type MarkCommand<C> =
   | { type: 'remove'; id: string }
 
 export class MarkEngineError extends Error {
-  constructor(public readonly code: 'invalid' | 'duplicate-id' | 'retired-id' | 'unknown-id' | 'revision-conflict', message: string) {
+  constructor(public readonly code: 'invalid' | 'duplicate-id' | 'retired-id' | 'unknown-id' | 'revision-conflict' | 'invalid-reference', message: string) {
     super(message); this.name = 'MarkEngineError'
   }
 }
@@ -39,15 +46,21 @@ function copyData<T>(value: T, ancestors = new Set<object>()): T {
   if (!Array.isArray(value) && !record(value)) fail('Content must be JSON data')
   if (ancestors.has(value as object)) fail('Content contains a cycle')
   ancestors.add(value as object)
-  const copy = Array.isArray(value)
-    ? value.map(item => copyData(item, ancestors))
-    : Object.fromEntries(Object.entries(value as object).map(([key, item]) => [key, copyData(item, ancestors)]))
+  const array = Array.isArray(value)
+  const keys = Reflect.ownKeys(value as object).filter(key => !array || key !== 'length')
+  if (array && (keys.length !== value.length || keys.some((key, at) => key !== String(at)))) fail('Content contains a sparse array or extra array properties')
+  const entries = keys.map(key => {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)!
+    if (typeof key !== 'string' || !descriptor.enumerable || !('value' in descriptor)) fail('Content contains a non-JSON property')
+    return [key, copyData(descriptor.value, ancestors)] as const
+  })
+  const copy = array ? entries.map(([, item]) => item) : Object.fromEntries(entries)
   ancestors.delete(value as object)
   return copy as T
 }
 function content<C>(value: C, options: EngineOptions<C>): C {
   const owned = copyData(value)
-  if (options.validateContent?.(owned) === false) fail('Content rejected by the format adapter')
+  if (options.validateContent?.(copyData(owned)) === false) fail('Content rejected by the format adapter')
   return owned
 }
 function style(value: MarkTypography = {}): MarkTypography {
@@ -89,7 +102,7 @@ function inspect<C>(before: MarkSnapshot<C>, expected?: number) {
 }
 function buildNodes<C>(inputs: MarkInput<C>[], options: EngineOptions<C>, allowed: Set<string>, reserved: Set<string>, seen = new Set<string>(), ancestors = new Set<object>(), depth = 0): MarkNode<C>[] {
   if (!Array.isArray(inputs) || depth > 256) fail('Invalid Mark children or excessive nesting')
-  return inputs.map(input => {
+  return Array.from(inputs, input => {
     if (!record(input) || ancestors.has(input)) fail('Invalid or cyclic Mark input')
     const id = input.id ?? (options.idFactory ?? createMarkId)()
     validId(id)
@@ -102,12 +115,78 @@ function buildNodes<C>(inputs: MarkInput<C>[], options: EngineOptions<C>, allowe
   })
 }
 
+function declaredReferences<C>(value: C, adapter: MarkReferences<C>): readonly string[] {
+  const references = adapter.get(copyData(value))
+  if (!Array.isArray(references)) fail('Mark references must be an array')
+  for (const id of references) validId(id)
+  return references
+}
+
+/** One immutable view avoids exposing mutators or cloning the entire ID map for each payload. */
+function readonlyIds(ids: Map<string, string>): ReadonlyMap<string, string> {
+  const view: ReadonlyMap<string, string> = {
+    size: ids.size, get: id => ids.get(id), has: id => ids.has(id),
+    entries: () => ids.entries(), keys: () => ids.keys(), values: () => ids.values(),
+    [Symbol.iterator]: () => ids[Symbol.iterator](),
+    forEach: (callback, thisArg) => ids.forEach((value, key) => callback.call(thisArg, value, key, view)),
+  }
+  return Object.freeze(view)
+}
+
+function validateReferences<C>(index: Map<string, Location<C>>, options: EngineOptions<C>): void {
+  if (!options.references) return
+  for (const { node } of index.values()) {
+    // Adapter callbacks receive detached data, so they cannot mutate a committed snapshot later.
+    for (const id of declaredReferences(node.content, options.references)) {
+      if (!index.has(id)) throw new MarkEngineError('invalid-reference', `Mark ${node.id} references missing Mark: ${id}`)
+    }
+  }
+}
+
+function exactKeys(value: Record<string, unknown>, expected: string[]): void {
+  const keys = Object.keys(value)
+  if (keys.length !== expected.length || keys.some(key => !expected.includes(key))) fail('Invalid snapshot fields')
+}
+
+/** Persisted snapshots are complete values, never partial MarkInput objects with generated defaults. */
+function copySnapshot<C>(value: unknown, options: EngineOptions<C>): MarkSnapshot<C> {
+  const snapshot = copyData(value) as MarkSnapshot<C>
+  const { live, retired } = inspect(snapshot)
+  exactKeys(snapshot as unknown as Record<string, unknown>, ['revision', 'roots', 'retiredIds'])
+  for (const { node } of live.values()) {
+    exactKeys(node as unknown as Record<string, unknown>, ['id', 'content', 'style', 'children'])
+    if (!record(node.style)) fail('Snapshot typography must be an object')
+    node.style = style(node.style)
+    if (options.validateContent?.(copyData(node.content)) === false) fail('Content rejected by the format adapter')
+  }
+  validateReferences(live, options)
+  return { revision: snapshot.revision, roots: snapshot.roots, retiredIds: [...retired] }
+}
+
+/** Schema version describes the wire format, independently of the document's transaction revision. */
+export function encodeMarkSnapshot<C>(snapshot: MarkSnapshot<C>, options: EngineOptions<C> = {}): string {
+  const envelope: MarkSnapshotEnvelope<C> = { format: 'oops-mark', schemaVersion: 1, snapshot: copySnapshot<C>(snapshot, options) }
+  return JSON.stringify(envelope)
+}
+
+export function decodeMarkSnapshot<C>(json: string, options: EngineOptions<C> = {}): MarkSnapshot<C> {
+  if (typeof json !== 'string') fail('Snapshot JSON must be a string')
+  let envelope: unknown
+  try { envelope = JSON.parse(json) } catch { fail('Invalid snapshot JSON') }
+  if (!record(envelope)) fail('Invalid snapshot envelope')
+  exactKeys(envelope, ['format', 'schemaVersion', 'snapshot'])
+  if (envelope.format !== 'oops-mark' || envelope.schemaVersion !== 1) fail('Unsupported Mark snapshot format or schema version')
+  return copySnapshot<C>(envelope.snapshot, options)
+}
+
 /** Authoritative adapter mapping; absent IDs get new identities, removed identities become tombstones. */
 export function reconcileSnapshot<C>(before: MarkSnapshot<C>, inputs: MarkInput<C>[], options: ReconcileOptions<C> = {}): MarkSnapshot<C> {
   const { live, retired } = inspect(before, options.expectedRevision)
+  if (before.revision >= Number.MAX_SAFE_INTEGER - 1) fail('Snapshot revision exhausted')
   const seen = new Set<string>()
   const roots = buildNodes(inputs, options, new Set(live.keys()), new Set([...retired, ...live.keys()]), seen)
   for (const id of live.keys()) if (!seen.has(id)) retired.add(id)
+  if (options.references) validateReferences(indexTree(roots), options)
   return { revision: before.revision + 1, roots, retiredIds: [...retired] }
 }
 
@@ -126,16 +205,18 @@ export function resolveTypography<C>(snapshot: MarkSnapshot<C>, id: string, defa
 
 /** Commands run on a detached working tree; any failure leaves the caller's snapshot untouched. */
 export function applyMarkCommands<C>(before: MarkSnapshot<C>, commands: MarkCommand<C>[], options: ReconcileOptions<C> = {}): MarkSnapshot<C> {
-  const { retired } = inspect(before, options.expectedRevision)
+  const { live, retired } = inspect(before, options.expectedRevision)
+  if (before.revision >= Number.MAX_SAFE_INTEGER - 1) fail('Snapshot revision exhausted')
   if (!Array.isArray(commands)) fail('Commands must be an array')
-  const roots = buildNodes(before.roots, options, new Set(indexTree(before.roots).keys()), new Set(retired))
-  const reserved = new Set([...retired, ...indexTree(roots).keys()])
+  const roots = buildNodes(before.roots, options, new Set(live.keys()), new Set(retired))
+  const reserved = new Set([...retired, ...live.keys()])
+  let cachedIndex: Map<string, Location<C>> | undefined
+  const index = () => cachedIndex ??= indexTree(roots)
   const removeIds = (node: MarkNode<C>) => { retired.add(node.id); node.children.forEach(removeIds) }
   for (const command of commands) {
     if (!record(command)) fail('Invalid Mark command')
-    const index = indexTree(roots)
     const location = (id: string) => {
-      const result = index.get(id)
+      const result = index().get(id)
       if (!result) throw new MarkEngineError('unknown-id', `Unknown Mark ID: ${String(id)}`)
       return result
     }
@@ -177,7 +258,30 @@ export function applyMarkCommands<C>(before: MarkSnapshot<C>, commands: MarkComm
       }
       case 'copy': {
         const fresh = (node: MarkNode<C>): MarkInput<C> => ({ content: node.content, style: node.style, children: node.children.map(fresh) })
-        const copies = buildNodes([fresh(location(command.id).node)], options, new Set(), reserved)
+        const original = location(command.id).node
+        const copies = buildNodes([fresh(original)], options, new Set(), reserved)
+        if (options.references) {
+          const idMap = new Map<string, string>()
+          const pair = (source: MarkNode<C>, copy: MarkNode<C>) => {
+            idMap.set(source.id, copy.id)
+            source.children.forEach((child, at) => pair(child, copy.children[at]))
+          }
+          pair(original, copies[0])
+          const ids = readonlyIds(idMap)
+          const remap = (node: MarkNode<C>) => {
+            const adapter = options.references!
+            const expected = new Map<string, number>()
+            for (const id of declaredReferences(node.content, adapter)) {
+              const target = idMap.get(id) ?? id
+              expected.set(target, (expected.get(target) ?? 0) + 1)
+            }
+            node.content = content(adapter.remap(node.content, ids), options)
+            for (const id of declaredReferences(node.content, adapter)) expected.set(id, (expected.get(id) ?? 0) - 1)
+            if ([...expected.values()].some(count => count !== 0)) throw new MarkEngineError('invalid-reference', 'Copy adapter must remap internal references and preserve external references')
+            node.children.forEach(remap)
+          }
+          copies.forEach(remap)
+        }
         insertAt(destination(command.parentId), command.index, copies)
         break
       }
@@ -201,8 +305,9 @@ export function applyMarkCommands<C>(before: MarkSnapshot<C>, commands: MarkComm
       }
       default: fail('Unknown Mark command')
     }
+    if (command.type !== 'edit' && command.type !== 'style') cachedIndex = undefined
   }
-  indexTree(roots)
+  validateReferences(index(), options)
   return { revision: before.revision + 1, roots, retiredIds: [...retired] }
 }
 
@@ -216,6 +321,15 @@ export class MarkEngine<C> {
     first.revision = 0
     this.issued = new Set(indexTree(first.roots).keys())
     this.history = new SnapshotHistory(first, { clone: value => value, equal: (a, b) => JSON.stringify(a.roots) === JSON.stringify(b.roots) })
+  }
+  /** Loading starts a fresh undo history while preserving all issued identities and the revision. */
+  static fromSnapshot<C>(snapshot: MarkSnapshot<C>, options: EngineOptions<C> = {}): MarkEngine<C> {
+    const first = copySnapshot<C>(snapshot, options)
+    const engine = new MarkEngine<C>([], options)
+    engine.sequence = first.revision
+    engine.issued = new Set([...indexTree(first.roots).keys(), ...first.retiredIds])
+    engine.history = new SnapshotHistory(first, { clone: value => value, equal: (a, b) => JSON.stringify(a.roots) === JSON.stringify(b.roots) })
+    return engine
   }
   get snapshot(): MarkSnapshot<C> { return copyData(this.history.current) }
   get bytes() { return this.history.bytes }

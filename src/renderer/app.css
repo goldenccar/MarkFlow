@@ -1,11 +1,11 @@
 :root {
   font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
   font-size: 13px; font-synthesis: none; color-scheme: light;
-  --bg: #fff; --shell: #f7f8f6; --sidebar: #f6f7f5; --window-bg: #f6f7f5; --surface-raised: #fff;
-  --text: #242825; --muted: #646c67; --subtle: #68746c; --line: #e6e9e4; --outline: #cdd3cd;
-  --hover: #ecefea; --accent: #365f55; --accent-bg: #e7efeb; --focus: #4f7b70;
+  --bg: #f5f6f3; --shell: #f0f2ee; --sidebar: #ecefea; --window-bg: #ecefea; --surface-raised: #f8f9f6;
+  --text: #242825; --muted: #646c67; --subtle: #626e66; --line: #dce1da; --outline: #c4cbc3;
+  --hover: #e2e7df; --accent: #365f55; --accent-bg: #e1eae3; --focus: #4f7b70;
   --primary: #262e29; --primary-text: #fff; --warning: #fff6e5; --danger: #ad3838;
-  --code-bg: #f6f8f5; --selection: #dceae3; --surface: var(--shell); --border: var(--line);
+  --code-bg: #edf0eb; --selection: #d5e4db; --surface: var(--shell); --border: var(--line);
   --radius: 7px; --sidebar-width: 240px; --menu-shadow: 0 12px 32px #18251d14, 0 2px 6px #18251d0a;
   --control-shadow: 0 1px 2px #18251d0a; --motion: 140ms cubic-bezier(.2, .7, .2, 1);
   color: var(--text); background: var(--bg);
@@ -82,10 +82,10 @@ svg.icon { flex: 0 0 auto; vertical-align: middle; }
 .window-spacer { flex: 1; min-width: 20px; align-self: stretch; }
 .document-tab.drop-target { box-shadow: inset 2px 0 var(--focus); border-radius: 8px 8px 0 0; }
 .app[data-mode='latex-math'] {
-  --bg: #fcfdff; --shell: #f0f5fa; --sidebar: #eaf0f6; --surface-raised: #fff;
-  --text: #263447; --muted: #596e85; --subtle: #64768b; --line: #dde6ef; --outline: #c4d2e0;
-  --hover: #dfe9f3; --accent: #2d6695; --accent-bg: #e0edf8; --focus: #397eb0;
-  --primary: #305d81; --primary-text: #fff; --code-bg: #eef4fa; --selection: #cfe4f5;
+  --bg: #f2f5f8; --shell: #eaf0f5; --sidebar: #e4ebf2; --surface-raised: #f7f9fc;
+  --text: #263447; --muted: #53697f; --subtle: #5e7186; --line: #d5dfe8; --outline: #becddd;
+  --hover: #d9e3ee; --accent: #2d6695; --accent-bg: #dae7f2; --focus: #397eb0;
+  --primary: #305d81; --primary-text: #fff; --code-bg: #e7edf4; --selection: #c7ddec;
 }
 :root[data-theme='dark'] .app[data-mode='latex-math'] {
   --bg: #171f2a; --shell: #1e2938; --sidebar: #141d29; --surface-raised: #283649;

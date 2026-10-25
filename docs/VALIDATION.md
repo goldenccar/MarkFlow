@@ -2,6 +2,31 @@
 
 日期：2026-10-26（Asia/Shanghai）。此记录区分实现、自动测试与需要用户账号/实体输入法的验收。
 
+## 柔和浅色与 Mark 复用基础（2026-10-26 后续开发版）
+
+日间正文改为灰白 / 淡蓝灰，同步导航、浮层、代码底色和原生 caption。Mark 核心补可选本地引用协议、复制引用重映射、版本化快照编解码 / 恢复，并在编辑批次中复用位置索引；校验器与引用适配回调不能保留可修改已提交状态的对象。README 改为产品首页，操作与开发细节拆入 USAGE、DEVELOPMENT。没有新增运行依赖，也没有实现 Excel 公式、图表、Page 或其他办公格式适配。
+
+- **最终类型检查 / 生产构建及独立引擎构建：通过。** 日志 `.test-data/mark-extensions-build.log`、`mark-extensions-package.log`；标准 Node ESM 导入验证复制引用、JSON 往返、加载后退役 ID 防复用及撤销重做，见 `mark-extensions-esm.log`。
+- **引擎与身份专项：33/33 通过。** 覆盖复制子树内部 / 外部 / 前向引用、普通字符串与素材 ID 不误替换、漏映射拒绝、错误回滚、快照版本及字段验证、重载后的 ID / revision / undo、回调别名隔离与混合结构命令索引。日志 `mark-extensions-unit.log`。独立代码复审未发现剩余阻断项。
+- **现有 Markdown 针对性回归：64/64 通过。** 覆盖身份、共享历史、rich/source 对应、文档 clean baseline 与渲染，日志 `mark-extensions-md-regression.log`。与上述专项存在重叠，不相加统计；此次未重复执行不受改动影响的完整 Git / 文件系统测试集。
+- **真实 Electron Mark 身份检查：7/7 通过。** 编辑、移动、复制、拆分合并、撤销重做、源码 / 对照、保存后重开身份与样式保持，日志 `mark-extensions-identity.log`。
+- **配色与界面检查：15/15 通过，12 张实际截图。** 覆盖 1440×1000、1100×760、920×620 × MD / Geek × 浅 / 深；大纲、边界、控件命中、减少动态效果与键盘焦点无异常，原始文件没有被修改。日志 `soft-light-visual.log`，画廊 `.test-data/visual-soft-light-62XiRq/index.html`。已目视复核两种日间宽屏，README 三张图来自这次真实窗口；页面截图不含系统 caption 按钮。
+- **主要文字 token 对比度：24/24 不低于 4.5:1，最低 4.59:1。** 见 `.test-data/soft-light-contrast.json`；这是配色配对检查，不是完整 WCAG 审计。
+- **README 及新指南：56 个相对文件 / 图片链接和锚点通过检查。** 启动命令对照实际 scripts、Electron bin 与 `.nvmrc`，未添加未经验证的下载入口或跨平台发布声明。
+
+生产 Electron、隔离 profile、无 Git 的本机输入测量；每个场景最后一个 Mark 设为 24px，输入 16 字符，测量含两帧并复核完整 ID 列表与样式。首轮出现一次 55ms 长任务，因此再执行两次相同检查，保留全部结果：
+
+| 场景 | 首轮中位 / 最大 | 复测 1 中位 / 最大 | 复测 2 中位 / 最大 | 50ms 以上长任务 |
+| --- | --- | --- | --- | --- |
+| 100 个 Mark | 11 / 18ms | 10 / 15ms | 14 / 18ms | 三轮均 0 |
+| 1,000 个 Mark | 18 / 31ms | 17 / 30ms | 17 / 29ms | 首轮 1 次 55ms，复测均 0 |
+
+日志 `.test-data/mark-extensions-performance.log`、`mark-extensions-performance-repeat1.log`、`mark-extensions-performance-repeat2.log`。未观察到持续输入回退，偶发长任务的根因未作归因，不能承诺任意文档或设备没有卡顿。
+
+核心批量探针另以 10,000 个平面节点执行 1 / 100 / 1,000 条 edit，9 个有效样本的中位数为 20.15 / 19.94 / 18.59ms。见 `.test-data/mark-extensions-batch.json`；它测量纯事务，不含引用协议、UI 或完整工作簿，不能当成 Excel 性能指标。
+
+本轮没有重打安装包；实体输入法与真实 GitHub 账号往返仍沿用原有人工验收边界。
+
 ## 视觉与交互呈现更新（当前开发版）
 
 本轮只调整样式、导航显示、响应式收纳及原生 caption 配色。未修改 Mark 引擎、文档格式、文件/Git、草稿、撤销或编辑事务，也未引入运行依赖。设计规则及官方评审依据见 [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md)。
