@@ -1,0 +1,9 @@
+.select-control { position: relative; display: inline-flex; min-width: 0; vertical-align: middle; }
+.select-control select { appearance: none; -webkit-appearance: none; width: 100%; min-width: 0; padding-right: 34px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.select-control > .icon { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.select-control[data-disabled] > .icon { opacity: .55; }
+.select-control select:disabled { cursor: default; }
+.select-control select:focus-visible { outline-offset: 2px; }
+.font-control .select-control select { height: 28px; min-height: 28px; padding: 3px 23px 3px 6px; border-color: transparent; background: transparent; border-radius: 5px; font-size: 12px; }
+.font-control .select-control > .icon { right: 6px; width: 12px; height: 12px; }
+.font-control .select-control select:hover:not(:disabled) { background: var(--hover); }

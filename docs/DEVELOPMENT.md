@@ -1,4 +1,4 @@
-# OopsMD 开发与调试
+# MarkFlow 开发与调试
 
 [返回首页](../README.md) · [使用指南](USAGE.md) · [验证记录](VALIDATION.md)
 
@@ -27,17 +27,17 @@ npm run dev
 建议用测试文件夹和独立 profile，隔离日常设置、最近文档与草稿：
 
 ```powershell
-$env:OOPSMD_USER_DATA = "$PWD\.test-data\manual-profile"
+$env:MARKFLOW_USER_DATA = "$PWD\.test-data\manual-profile"
 npm run dev
 ```
 
 停止开发进程后，在同一终端移除本次环境变量：
 
 ```powershell
-Remove-Item Env:OOPSMD_USER_DATA
+Remove-Item Env:MARKFLOW_USER_DATA
 ```
 
-默认设备数据目录由 Electron 的 `app.getPath('userData')` 决定，Windows 通常是 `%APPDATA%\oopsmd`。设备设置、草稿和归档索引不进入文档 Git 仓库。独立 profile 只隔离应用状态；请选择专门的测试文档文件夹，避免修改日常文件。
+默认设备数据继续使用旧版目录，Windows 为 `%APPDATA%\oopsmd`，保留已有设置、草稿和项目记录。`MARKFLOW_USER_DATA` 可指定独立目录；旧变量 `OOPSMD_USER_DATA` 仍兼容，两者同时设置时优先使用 `MARKFLOW_USER_DATA`。设备设置、草稿和归档索引不进入文档 Git 仓库。独立 profile 只隔离应用状态；请选择专门的测试文档文件夹，避免修改日常文件。
 
 ## 调试入口
 
@@ -61,7 +61,7 @@ Remove-Item Env:OOPSMD_USER_DATA
 npm run debug
 ```
 
-然后在 VS Code 运行 **OopsMD: attach main process**，连接 `9229`。配置已在 [`.vscode/launch.json`](../.vscode/launch.json)。在 [`src/main/index.ts`](../src/main/index.ts) 的 `files:save` 处理处下断点，可依次检查内容快照、磁盘 revision、写盘结果与 Git 结果。
+然后在 VS Code 运行 **MarkFlow: attach main process**，连接 `9229`。配置已在 [`.vscode/launch.json`](../.vscode/launch.json)。在 [`src/main/index.ts`](../src/main/index.ts) 的 `files:save` 处理处下断点，可依次检查内容快照、磁盘 revision、写盘结果与 Git 结果。
 
 文件安全逻辑在 [`src/main/files.ts`](../src/main/files.ts)，版本与同步在 [`src/main/git.ts`](../src/main/git.ts)。[`src/preload/index.ts`](../src/preload/index.ts) 是最小桥接层，接口类型在 [`src/shared/types.ts`](../src/shared/types.ts)。文件/Git 调用绑定项目，切换前排队的旧调用会被拒绝；应用没有暴露任意命令执行或通用 IPC 接口。
 
@@ -70,7 +70,7 @@ npm run debug
 ## 最短人工验证路径
 
 1. 在新文档输入 Markdown 和 `$E=mc^2$`；Ctrl+S 选择测试文件夹并命名 `说明.md`。
-2. 切换实时预览、源码、对照，以及 Markdown / Geek，检查正文、光标与撤销；Geek 只渲染数学片段。
+2. 切换实时预览、源码、对照，以及 Markdown / Formula，检查正文、光标与撤销；Formula 只渲染数学片段。
 3. 保存后查看磁盘文件，关闭再打开应用，检查标签会话、继续上次项目、新建文档与恢复草稿。
 4. 在“Git 与同步”填写作者，明确启用 Git 并建立基线；确认只读打开不会创建仓库。
 5. 将默认 500 的自动版本阈值临时改为 10。一次粘贴超过阈值应只记录一个快照；无新内容保存不创建空提交。
@@ -142,13 +142,15 @@ npm run prepare:git
 npm run pack
 ```
 
-`pack` 生成解包目录，入口为 `release/win-unpacked/OopsMD.exe`。生成 NSIS 安装包：
+`pack` 生成解包目录，入口为 `release/win-unpacked/MarkFlow.exe`。生成 NSIS 安装包：
 
 ```powershell
 npm run dist
 ```
 
-当前版本产物为 `release/OopsMD-0.1.0-win-x64-setup.exe`。`pack` / `dist` 都会构建应用并校验 Git 运行时；这些命令面向 Windows x64，不生成 macOS 安装包。安装包未签名，Windows 可能显示未知发布者提示。
+当前版本产物为 `release/MarkFlow-0.1.0-win-x64-setup.exe`。`pack` / `dist` 都会构建应用并校验 Git 运行时；这些命令面向 Windows x64，不生成 macOS 安装包。安装包未签名，Windows 可能显示未知发布者提示。
+
+`productName` 和安装包名称使用 MarkFlow；`appId` 保留 `app.oopsmd.desktop`，用于延续 Windows 安装升级身份。该标识、旧用户数据目录和持久化键不属于界面名称，不应随文案改名而直接替换。
 
 源码更新不代表已有安装包同步更新。对外发布前还需复核分发内容、第三方许可和对应源码要求；本地打包成功不等于完成这些发布检查。
 

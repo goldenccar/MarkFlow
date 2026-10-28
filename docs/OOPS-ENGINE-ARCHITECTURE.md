@@ -1,6 +1,6 @@
-# Oops Mark 引擎与适配边界
+# MarkFlow 的 Mark 引擎与适配边界
 
-更新：2026-10-26。Mark 已有独立、可构建的 TypeScript 运行时，OopsMD 是当前实际接入的格式适配器。Excel、Word、PPT、PDF 尚未接入；Page 仅保留草案类型。本轮完善引用协议、版本化快照恢复和批次索引复用，不实现公式计算、图表、筛选器、切片器、页面渲染或 AI。
+更新：2026-10-28。Mark 保持独立、可构建的 TypeScript 运行时；桌面端提供独立 Markdown / Formula 文档模块及右侧文档导航。Excel、Word、PPT、PDF 尚未接入；Page 仍为草案类型。2026-10-26 完成的引用协议、版本化快照恢复、批次索引复用及其验证记录保留如下；本轮不实现公式计算、图表、筛选器、切片器、页面渲染或 AI。
 
 ## 1. 实际代码与职责
 
@@ -8,11 +8,23 @@
 | --- | --- | --- |
 | src/engine | Mark 树、身份、原子命令、本地引用、版本检查、样式继承、快照历史与快照编解码 | 零运行依赖，不导入 Markdown、React、DOM 或 Node 模块 |
 | src/shared/marks.ts | Markdown 原文范围、全量身份 registry、局部字体、源码对应与序列化 | 当前是顶层语义范围的平面适配，不是 Markdown 全 AST 的嵌套数据库 |
+| src/renderer/documents | 文档模块登记、能力、独立编辑器/预览、初始化与布局 | 当前只注册 Markdown / Formula；未来格式的类型契约不是已实现的适配器 |
 | rich/source 适配器 | 编辑器节点到 Mark ID 的映射、复制/拆合、输入和选区 | 复用同一文档历史与保存链路，不自行写磁盘 |
+| 窗口外壳与文档导航 | 项目/标签/保存入口、右侧标题层级、阅读与光标定位 | 导航与浮层不是 Mark 内容；位置动效不驱动正文事务 |
 | 文件/Git 服务 | 路径授权、草稿、原子保存、磁盘冲突和版本 | 内容引擎不取得文件或项目权限 |
 | src/engine/page.ts | 页面、放置与片段的未来类型 | 不在引擎公共入口及独立构建中，无页面运行时 |
 
 产品内容单元叫 **Mark**；ProseMirror marks 表示加粗、链接等内联格式，两者不同。代码块、CSS block 等技术名称仍按其原义使用。
+
+### 文档模块与界面边界
+
+`src/renderer/documents/index.ts` 登记 `DocumentModule`：模块提供编辑器、预览、初始化、目录生成、可用布局和能力标记。Markdown 使用现有 Tiptap / ProseMirror 与 CodeMirror 适配、Mark 身份及文本历史；Formula 使用独立数学源码编辑器和 KaTeX 预览，不为其创建隐藏的 Markdown 富文本实例。Formula 的 `.tex` 内容仍是数学片段，不是完整 TeX 文档编译。
+
+外壳按能力组织工具。顶部加号选择新建 Markdown / Formula；快捷新建默认 Markdown。当前文档类型只展示，不提供原地跨类型切换，重命名也不能把扩展名变更当作格式转换。
+
+左侧保留项目和文件结构，文档标题目录位于右侧。零个或一个标题时默认只显示入口；更多标题可通过刻度悬停展开，也可固定、搜索或折叠层级。内容块列表位于目录的次级检查器。编辑选区与阅读滚动共同提供当前标题：阅读追踪缓存标题几何，滚动时定位章节；回到编辑后交回光标，源码使用光标。位置缓存是派生界面状态，不写入 Mark 文档。
+
+窗口布局经 `useWorkspaceMotion` 一次提交状态，再以位移动画呈现；格式手柄在布局动画期间暂停测量。文档初始化、解析、历史和保存不依赖动画帧。性能与实机交互证据仍统一记在 [验证记录](VALIDATION.md)。
 
 ## 2. 独立包与唯一运行模型
 
@@ -71,7 +83,7 @@ reconcileSnapshot(before, inputs, options) 接收编辑器的权威节点映射�
 
 MarkEngine 提供上述纯函数的有状态封装、snapshot 防御性副本与 undo/redo；撤销恢复原 ID，版本仍递增，废弃 redo 分支的 ID 继续保留为已使用。SnapshotHistory<T> 是通用历史，默认 600 ms 分组、最多 100 个过去检查点、约 32 MiB 过去快照预算；超大文档仍至少保留一次撤销，因此这不是进程总内存硬上限。EditHistory 保留原来的正文/光标 API，renderer 旧入口只是重导出，rich/source 共享它。
 
-OopsMD 目前通过纯函数和已有文本快照历史接入，不要求界面改用第二份 MarkEngine 状态。Markdown payload 是 type/raw，roots 是平面语义 Mark，children 暂为空。字体作用于整个选中 Mark：顶层表格一个范围、顶层列表按列表项，未实现嵌套单元格或文字选区字体。
+MarkFlow 目前通过纯函数和已有文本快照历史接入，不要求界面改用第二份 MarkEngine 状态。Markdown payload 是 type/raw，roots 是平面语义 Mark，children 暂为空。字体作用于整个选中 Mark：顶层表格一个范围、顶层列表按列表项，未实现嵌套单元格或文字选区字体。
 
 ### 本地引用与复制
 
@@ -99,7 +111,7 @@ encodeMarkSnapshot(snapshot, options?) 与 decodeMarkSnapshot<C>(json, options?)
 
 这里的 options 由宿主代码重新提供，不序列化函数。保存只含当前快照，不含 undo/redo 栈、编辑器光标、计算依赖图或素材文件。加载后 undo 没有历史；执行新事务后可以撤销回加载时的快照。磁盘原子写入、文件大小限制和冲突处理仍由文件服务负责，编解码函数不访问文件系统。
 
-schemaVersion 表示通用快照封装结构；snapshot.revision 表示这份文档的编辑版本。payload 自身的格式版本和迁移由适配器定义并通过 validateContent 验证，不能把二者混为一谈。Markdown 尾注的 registry v:1 也是另一种适配器存储格式，当前 OopsMD 不改用上述通用封装替代 .md 文件或新增 sidecar。
+schemaVersion 表示通用快照封装结构；snapshot.revision 表示这份文档的编辑版本。payload 自身的格式版本和迁移由适配器定义并通过 validateContent 验证，不能把二者混为一谈。Markdown 尾注的 registry v:1 也是另一种适配器存储格式，当前 MarkFlow 不改用上述通用封装替代 .md 文件或新增 sidecar。
 
 ### 批量操作与规模
 
@@ -107,7 +119,7 @@ schemaVersion 表示通用快照封装结构；snapshot.revision 表示这份文
 
 ## 4. 样式与 Markdown 持久化
 
-运行时 resolveTypography 按调用方默认 → 祖先覆盖 → 当前 Mark 覆盖计算，不把最终值写回每个节点。OopsMD **默认字体/字号仍来自设备 Settings**，只有局部覆盖随文件携带；文档默认、命名样式和模板级联尚未实现。
+运行时 resolveTypography 按调用方默认 → 祖先覆盖 → 当前 Mark 覆盖计算，不把最终值写回每个节点。MarkFlow **默认字体/字号仍来自设备 Settings**，只有局部覆盖随文件携带；文档默认、命名样式和模板级联尚未实现。
 
 引擎只验证字体标识和正数字号，Markdown 适配器进一步限制为现有字体枚举及 10–96 CSS px。字体缺失时保留请求、显示 fallback，不永久改成替代字体。字体名不代表实际字形覆盖或嵌入许可。
 
@@ -117,7 +129,7 @@ registry v:1 保存 documentId、revision、complete、bodyHash、活跃 marks �
 
 **删除正文后，新尾注只保存退役 ID，不继续隐藏保存被删正文。** 删除内容由可撤销快照保留；旧版 orphan 记录在下一次正常重写时迁移为退役 ID。外部对应不确定时不把旧样式猜给另一个节点。
 
-完整 registry 在文档进入编辑会话时创建；App 将这一步纳入 clean baseline，不只因补 ID 就改写磁盘。已有 registry 的身份跨重开保留；首次打开纯 Markdown 时的新身份先存在于会话，随后续实际草稿/保存持久化。**纯文件只打开后直接关闭、从未保存或产生草稿时，下次可以重新分配 ID。** 引擎不为此偷偷写原文件。
+完整 registry 在 Markdown 模块初始化编辑会话时创建；外壳将这一步纳入 clean baseline，不只因补 ID 就改写磁盘。已有 registry 的身份跨重开保留；首次打开纯 Markdown 时的新身份先存在于会话，随后续实际草稿/保存持久化。**纯文件只打开后直接关闭、从未保存或产生草稿时，下次可以重新分配 ID。** 引擎不为此偷偷写原文件。
 
 当前 JSON 长度保护为 32 × 1024 × 1024 个 JavaScript 字符，不是精确 UTF-8 字节或内存上限；原文定位片段会增大文件。超限拒绝本次序列化。尾注转义注释特殊字符；有效注册区独立于正文解析，未闭合代码围栏不会吞掉它。短 schema 代码示例和普通注释仍按正文处理。未知版本/损坏数据保留原文并阻止相关格式修改，不直接丢弃。
 
@@ -145,6 +157,8 @@ Mark 树保存内容归属、稳定身份与可撤销修改。未来表格适配
 
 ## 6. Page 与二进制格式：保留边界，不实现
 
+`src/renderer/documents/types.ts` 仅为未来富文档、表格、PDF 预留契约：`DocumentCodec<Model>` 负责字节读写；`DocumentRuntime` 负责模型快照、命令、预期版本、刷新与释放；`FutureDocumentModule` 组合 codec、runtime、渲染器及页面/工作表等布局。当前没有这些格式的 codec、运行时、编辑视图或入口，当前文本型 `ContentMode` 也不等同于未来二进制模型。各模块自行定义块、单元格或页面目标，并接入授权与保存边界。
+
 page.ts 的草案让 Placement 引用 Mark ID，保存盒、仿射矩阵、zIndex 与裁切；内容不因多处放置而复制。PageSource 区分 flow、fixed、imported-pdf：流式分页由有序内容生成片段，固定页面保存用户放置，导入 PDF 保留原文件与实际可编辑范围。一段跨页仍是一个 Mark，Fragment 是派生结果。
 
 Mark 保存页码/总页数字段的语义，未来 Page 计算显示值与分页结果。页眉、页脚和模板引用普通 Mark，不将动态页码写死成正文。页面规格、边距和计数器可参考 [W3C CSS Paged Media](https://www.w3.org/TR/css-page-3/)；不可分内容、孤行与强制分页边界参考 [CSS Fragmentation](https://www.w3.org/TR/css-break-3/)。这些标准不是已有浏览器或应用功能的证明。
@@ -163,4 +177,4 @@ Word/PPT/PDF 可消费同一 Mark 运行时，但各自必须实现内容映射�
 
 当前没有 AI 执行。将来命令需绑定目标文档/项目授权、缓冲及磁盘版本、Mark ID；区间修改还需编码、范围和预期原文。通过校验后作为一次可撤销事务，再经过现有草稿/保存。换 tab 不改变命令目标，文档内的指令不构成程序授权。
 
-本轮 33 项针对性测试通过，覆盖核心事务、引用复制与删除、快照恢复、原编辑历史及 Markdown 身份适配。独立包构建、标准 Node ESM 中复制引用、JSON 编解码与恢复通过。独立审查另验证回调不能保留可变快照引用、只读 ID 映射不能泄漏底层 Map、错误引用映射原子拒绝，以及加载后的撤销版本递增。生产构建、Markdown 回归、实机身份操作及输入性能的结果见 [验证记录](VALIDATION.md)。这些结果不表示已实现 Excel 或其他 Office 格式。独立包不需要 Electron、Markdown 或 Page 依赖，未发布或额外安装软件包。
+2026-10-26 轮次的 33 项针对性测试通过，覆盖核心事务、引用复制与删除、快照恢复、原编辑历史及 Markdown 身份适配。该轮独立包构建、标准 Node ESM 中复制引用、JSON 编解码与恢复通过。独立审查另验证回调不能保留可变快照引用、只读 ID 映射不能泄漏底层 Map、错误引用映射原子拒绝，以及加载后的撤销版本递增。后续生产构建、Markdown 回归、实机身份操作及输入性能的结果见 [验证记录](VALIDATION.md)。这些历史结果不替代本轮模块/导航验收，也不表示已实现 Excel 或其他 Office 格式。独立包不需要 Electron、Markdown 或 Page 依赖，未发布或额外安装软件包。

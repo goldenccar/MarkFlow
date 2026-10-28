@@ -11,8 +11,11 @@ const exists = async target => { try { await fs.access(target); return true } ca
 const quote = value => `'${value.replaceAll("'", "''")}'`
 
 async function addNotices(root, manifest) {
-  await fs.writeFile(path.join(root, 'OOPSMD-GIT-SOURCE.txt'), sourceNotice(manifest))
-  await fs.writeFile(path.join(root, '.oopsmd-runtime.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+  await fs.writeFile(path.join(root, 'MARKFLOW-GIT-SOURCE.txt'), sourceNotice(manifest))
+  await fs.writeFile(path.join(root, '.markflow-runtime.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+  for (const legacyNotice of ['OOPSMD-GIT-SOURCE.txt', '.oopsmd-runtime.json']) {
+    await fs.rm(path.join(root, legacyNotice), { force: true })
+  }
 }
 
 async function prepare() {

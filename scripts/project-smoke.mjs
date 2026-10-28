@@ -1,3 +1,4 @@
+import { newDocument } from './ui-test-utils.mjs'
 import { _electron as electron, expect } from '@playwright/test'
 import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
@@ -24,12 +25,12 @@ const gitBin = process.env.OOPSMD_SMOKE_EXE
   ? path.join(path.dirname(process.env.OOPSMD_SMOKE_EXE), 'resources', 'git', 'cmd', 'git.exe') : 'git'
 const git = (...args) => execFileSync(gitBin, args, { cwd: gitProject, encoding: 'utf8', windowsHide: true }).trim()
 git('init', '-b', 'main')
-git('config', 'user.name', 'OopsMD Project Test')
+git('config', 'user.name', 'MarkFlow Project Test')
 git('config', 'user.email', 'test@example.invalid')
 git('add', '.')
 git('commit', '-m', 'baseline')
 const commits = () => Number(git('rev-list', '--count', 'HEAD'))
-const env = { ...process.env, OOPSMD_USER_DATA: profile }
+const env = { ...process.env, MARKFLOW_USER_DATA: profile }
 delete env.ELECTRON_RUN_AS_NODE
 const checks = []
 const failures = []
@@ -37,7 +38,7 @@ const passed = (name) => { checks.push(name); console.log(`PASS ${name}`) }
 let app
 let page
 const source = () => page.locator('.cm-content')
-const saveButton = () => page.getByRole('button', { name: '保存 Ctrl S', exact: true })
+const saveButton = () => page.getByRole('button', { name: /^保存(?: (?:Ctrl|⌘) S)?$/ })
 const projectButton = (folder) => page.locator('.sidebar').getByRole('button', { name: `打开项目 ${path.basename(folder)}`, exact: true })
 const savedSettings = () => page.evaluate(() => window.oops.settings())
 const scratch = () => page.evaluate(() => window.oops.listUntitled())
@@ -81,7 +82,7 @@ async function append(value) {
   await sourceMode()
   await expect(source()).toHaveAttribute('contenteditable', 'true')
   await source().click()
-  await page.keyboard.press('Control+End')
+  await page.keyboard.press('ControlOrMeta+End')
   // A leading line break is a keyboard Enter, not Chromium insertText's paste boundary.
   if (value.startsWith('\n')) { await page.keyboard.press('Enter'); await page.keyboard.insertText(value.slice(1)) }
   else await page.keyboard.insertText(value)
@@ -89,7 +90,7 @@ async function append(value) {
 async function save() {
   await expect(saveButton()).toBeEnabled()
   await source().click()
-  await page.keyboard.press('Control+s')
+  await page.keyboard.press('ControlOrMeta+s')
 }
 async function settleSave() {
   await expect(page.locator('.unsaved-dot')).toHaveCount(0)
@@ -209,10 +210,10 @@ try {
   expect((await savedSettings()).lastProject).toBe(plainProject)
   await expect(saveButton()).toBeEnabled()
   await source().click()
-  await page.keyboard.press('Control+z')
+  await page.keyboard.press('ControlOrMeta+z')
   await expect(source()).not.toContainText('LATER_B')
   // Shift+Z must produce an uppercase key, as a physical Windows keyboard does.
-  await page.keyboard.press('Control+Shift+Z')
+  await page.keyboard.press('ControlOrMeta+Shift+Z')
   await expect(source()).toContainText('LATER_B')
   await save()
   await settleSave()
@@ -302,7 +303,7 @@ try {
   await expect(page.locator('.tree-scroll').getByRole('button', { name: 'moved-folder', exact: true })).toBeVisible()
   await sourceMode()
   await expect(source()).toHaveAttribute('contenteditable', 'true')
-  await page.keyboard.press('Control+Shift+T')
+  await page.keyboard.press('ControlOrMeta+Shift+T')
   await expect(page.getByRole('tab', { name: 'closed.md', exact: true })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByRole('tab', { name: 'closed.md', exact: true })).toHaveAttribute('title', plainProject + '/moved-folder/closed.md')
   await sourceMode()
@@ -332,7 +333,7 @@ try {
   await expect(source()).toContainText('NEW_A')
   await expect(source()).not.toContainText('ORIGINAL_B')
   await append('\nA_ONLY_EDIT')
-  await page.keyboard.press('Control+z')
+  await page.keyboard.press('ControlOrMeta+z')
   await expect(source()).not.toContainText('A_ONLY_EDIT')
   await expect(source()).toContainText('NEW_A')
   await expect(source()).not.toContainText('B_ONLY_EDIT')
@@ -340,10 +341,10 @@ try {
   await sourceMode()
   await expect(source()).toContainText('B_ONLY_EDIT')
   await expect(source()).not.toContainText('NEW_A')
-  await source().click(); await page.keyboard.press('Control+z')
+  await source().click(); await page.keyboard.press('ControlOrMeta+z')
   await expect(source()).not.toContainText('B_ONLY_EDIT')
   await expect(source()).toContainText('ORIGINAL_B')
-  await page.keyboard.press('Control+Shift+Z')
+  await page.keyboard.press('ControlOrMeta+Shift+Z')
   await expect(source()).toContainText('B_ONLY_EDIT')
   await save(); await settleSave()
   await page.getByRole('tab', { name: 'rename-source.md', exact: true }).click()
@@ -372,23 +373,25 @@ try {
   await expect(page.locator('.startup h1')).toHaveText('继续你的工作')
   await page.locator('.startup').getByRole('button', { name: '新建文档', exact: true }).click()
   await expect(page.locator('.document-name')).toHaveText('未命名.md')
+  await expect(page.locator('.document-type')).toHaveText('Markdown')
+  await newDocument(page, 'Formula')
   await sourceMode()
   await expect(source()).toHaveAttribute('contenteditable', 'true')
   await append('SECOND_SCRATCH\n\\frac{a}{b}')
-  await page.getByRole('button', { name: 'Geek', exact: true }).click()
-  await page.getByRole('button', { name: '源码', exact: true }).click()
   await expect.poll(async () => (await scratch()).find(item => item.content.startsWith('SECOND_SCRATCH'))?.mode).toBe('latex-math')
+  expect((await scratch()).find(item => item.content.startsWith('SECOND_SCRATCH')).content).toBe('SECOND_SCRATCH\n\\frac{a}{b}')
   await saveDialog(null)
   await save()
   await expect(page.locator('.statusbar')).toContainText('已取消保存')
-  await expect(page.getByRole('button', { name: 'Geek', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.document-type')).toHaveText('Formula')
   await expect(page.locator('.editor-area')).toHaveClass(/layout-source/)
   expect((await savedSettings()).projects).toHaveLength(2)
   expect((await savedSettings()).lastProject).toBe(gitProject)
-  passed('startup New Document creates an independent scratch; cancel preserves its content mode and layout')
+  passed('startup creates Markdown, the plus menu creates an independent Formula draft, and cancel preserves its plain source and layout')
 
-  await page.getByRole('button', { name: '新建标签', exact: true }).click()
+  await newDocument(page)
   await expect(page.locator('.modal')).toHaveCount(0)
+  await sourceMode()
   await append('THIRD_SCRATCH')
   await expect.poll(async () => (await scratch()).length).toBe(2)
   await restart()
@@ -397,7 +400,7 @@ try {
   await sourceMode()
   await expect(source()).toContainText('SECOND_SCRATCH')
   await expect(source()).not.toContainText('THIRD_SCRATCH')
-  await expect(page.getByRole('button', { name: 'Geek', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.document-type')).toHaveText('Formula')
   const thirdScratch = (await scratch()).find(item => markdownBody(item.content) === 'THIRD_SCRATCH')
   expect(thirdScratch).toBeTruthy()
   expect(readRegistry(thirdScratch.content)?.complete).toBe(true)

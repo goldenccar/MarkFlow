@@ -16,7 +16,7 @@ for (let directory = 0; directory < 40; directory++) {
 }
 const gitBinary = path.join(process.cwd(), 'vendor/git/cmd/git.exe')
 const command = (...args: string[]) => execFileSync(gitBinary, args, { cwd: project, windowsHide: true, stdio: 'ignore' })
-command('init', '-b', 'main'); command('config', 'user.name', 'OopsMD Performance'); command('config', 'user.email', 'perf@example.invalid'); command('add', '.'); command('commit', '-m', 'fixture')
+command('init', '-b', 'main'); command('config', 'user.name', 'MarkFlow Performance'); command('config', 'user.email', 'perf@example.invalid'); command('add', '.'); command('commit', '-m', 'fixture')
 const files = new FileService(project, path.join(fixture, 'profile'))
 const git = new GitService(project, gitBinary)
 const instrumented = git as unknown as { run: (...args: unknown[]) => Promise<unknown> }

@@ -1,4 +1,7 @@
 export type ContentMode = 'markdown' | 'latex-math'
+export type ThemePreference = 'light' | 'dark' | 'system'
+export type ResolvedTheme = 'light' | 'dark'
+export interface WindowAppearance { theme: ThemePreference; mode: ContentMode }
 export type Layout = 'source' | 'preview' | 'split'
 export const fontFamilies = ['system', 'fangsong', 'fangsong-gb2312', 'kaiti', 'kaiti-gb2312', 'microsoft-yahei', 'alibaba-puhuiti'] as const
 export type FontFamily = typeof fontFamilies[number]
@@ -6,7 +9,7 @@ export interface FontOption { id: FontFamily; name: string; family: string; avai
 export interface Settings {
   autoCommit: boolean
   threshold: number
-  theme: 'light' | 'dark'
+  theme: ThemePreference
   fontSize: number
   fontFamily: FontFamily
   lineHeight: number
@@ -18,7 +21,7 @@ export interface Settings {
   positions: Record<string, { cursor: number; scroll: number; previewScroll?: number }>
 }
 export const defaultSettings: Settings = {
-  autoCommit: true, threshold: 500, theme: 'light', fontSize: 16, fontFamily: 'system',
+  autoCommit: true, threshold: 500, theme: 'system', fontSize: 16, fontFamily: 'system',
   lineHeight: 1.8, lineWidth: 780, layout: 'preview', recent: [], projects: [], lastProject: null, positions: {},
 }
 export interface FileEntry { path: string; name: string; directory: boolean; children?: FileEntry[] }
@@ -41,6 +44,8 @@ export interface Library { root: string; entries: FileEntry[] }
 export interface OpenDocument { file: DiskFile; draft: Draft | null; baseline: string | null }
 export interface MutationResult { path: string; affectedLinks: string[]; warning?: string }
 export interface OopsAPI {
+  readonly platform: string
+  setWindowAppearance(appearance: WindowAppearance): Promise<void>
   fonts(): Promise<FontOption[]>
   chooseLibrary(): Promise<Library | null>
   openProject(root: string): Promise<Library>

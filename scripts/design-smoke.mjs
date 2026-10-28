@@ -1,3 +1,4 @@
+import { showBlockInspector, setTheme } from './ui-test-utils.mjs'
 import { _electron as electron, expect } from '@playwright/test'
 import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
@@ -17,11 +18,11 @@ await writeFile(path.join(library, '公式.tex'), '\\int_0^1 x^2\\,dx = \\frac{1
 const gitBin = process.env.OOPSMD_SMOKE_EXE ? path.join(path.dirname(process.env.OOPSMD_SMOKE_EXE), 'resources', 'git', 'cmd', 'git.exe') : 'git'
 const git = (...args) => execFileSync(gitBin, args, { cwd: library, encoding: 'utf8', windowsHide: true }).trim()
 git('init', '-b', 'main')
-git('config', 'user.name', 'OopsMD Design Test')
+git('config', 'user.name', 'MarkFlow Design Test')
 git('config', 'user.email', 'test@example.invalid')
 git('add', '.')
 git('commit', '-m', 'baseline')
-const env = { ...process.env, OOPSMD_USER_DATA: profile }
+const env = { ...process.env, MARKFLOW_USER_DATA: profile }
 delete env.ELECTRON_RUN_AS_NODE
 const checks = []
 const screenshots = []
@@ -31,7 +32,7 @@ let page
 const passed = name => { checks.push(name); console.log(`PASS ${name}`) }
 const tree = name => page.locator('.tree-scroll').getByRole('button', { name, exact: true })
 const editor = () => page.locator('.cm-content:visible')
-const saveButton = () => page.getByRole('button', { name: '保存 Ctrl S', exact: true })
+const saveButton = () => page.getByRole('button', { name: /^保存(?: (?:Ctrl|⌘) S)?$/ })
 async function launch() {
   app = await electron.launch({ ...(process.env.OOPSMD_SMOKE_EXE ? { executablePath: process.env.OOPSMD_SMOKE_EXE, args: [] } : { args: [root] }), env })
   page = await app.firstWindow()
@@ -84,6 +85,7 @@ async function context(item) {
 
 try {
   await launch()
+  await setTheme(page, 'light')
   await expect(page.locator('.live-pane [contenteditable="true"]:visible')).toBeVisible()
   await expect(page.locator('.brand, .titlebar, .sidebar-top, .file-actions')).toHaveCount(0)
   await expect(page.locator('.window-drag').getByRole('button', { name: '新建标签', exact: true })).toBeVisible()
@@ -98,15 +100,16 @@ try {
   await tree('写作.md').click()
   await expect(page.locator('.live-pane [contenteditable="true"]:visible')).toBeVisible()
   await expect(page.locator('.live-pane h1')).toHaveText('把思考留在纸面上')
+  await showBlockInspector(page)
   await expect.poll(() => page.locator('.block-tree button').count()).toBeGreaterThan(3)
   await page.locator('.block-tree button').nth(1).click()
   await expect(page.locator('.live-pane h1')).toHaveText('把思考留在纸面上')
   await captureTheme('markdown-light')
   const markdownSurface = await page.locator('.app').evaluate(element => getComputedStyle(element).getPropertyValue('--sidebar').trim())
-  await page.getByRole('button', { name: '切换主题', exact: true }).click()
+  await setTheme(page, 'dark')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await captureTheme('markdown-dark')
-  await page.getByRole('button', { name: '切换主题', exact: true }).click()
+  await setTheme(page, 'light')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   passed('Markdown light/dark surfaces, rendered blocks and document-block navigation')
 
@@ -114,7 +117,7 @@ try {
   await expect(page.locator('.editor-area')).toHaveClass(/layout-source/)
   await expect(editor()).toContainText('# 把思考留在纸面上')
   await editor().click()
-  await page.keyboard.press('Control+End')
+  await page.keyboard.press('ControlOrMeta+End')
   await page.keyboard.press('Enter')
   await page.keyboard.insertText('DESIGN_EDIT')
   await expect.poll(async () => markdownBody((await page.evaluate(() => window.oops.read('写作.md'))).draft?.content ?? '')).toBe(markdown + '\nDESIGN_EDIT')
@@ -124,9 +127,9 @@ try {
   await expect(page.locator('.source-pane')).toBeVisible()
   await expect(page.locator('.preview-pane')).toBeVisible()
   await editor().click()
-  await page.keyboard.press('Control+z')
+  await page.keyboard.press('ControlOrMeta+z')
   await expect(editor()).not.toContainText('DESIGN_EDIT')
-  await page.keyboard.press('Control+Shift+Z')
+  await page.keyboard.press('ControlOrMeta+Shift+Z')
   await expect(editor()).toContainText('DESIGN_EDIT')
   await saveButton().click()
   await expect(page.locator('.unsaved-dot')).toHaveCount(0)
@@ -144,18 +147,18 @@ try {
   await expect(page.locator('.preview-pane .katex')).toHaveCount(1)
   expect(await page.locator('.app').evaluate(element => getComputedStyle(element).getPropertyValue('--sidebar').trim())).not.toBe(markdownSurface)
   await captureTheme('geek-light')
-  await page.getByRole('button', { name: '切换主题', exact: true }).click()
+  await setTheme(page, 'dark')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await captureTheme('geek-dark')
   await noClipping()
-  await page.getByRole('button', { name: '切换主题', exact: true }).click()
+  await setTheme(page, 'light')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await tree('写作.md').click()
   await resize(920, 620)
   await noClipping()
   await capture('markdown-compact')
   await resize(1440, 940)
-  passed('Geek has editable source and formula output in both themes; controls fit a compact desktop window')
+  passed('Formula has editable source and formula output in both themes; controls fit a compact desktop window')
 
   const spare = await readFile(path.join(library, '备用.md'), 'utf8')
   const beforeArchive = git('status', '--porcelain=v1')

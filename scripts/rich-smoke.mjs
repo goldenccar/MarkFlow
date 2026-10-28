@@ -1,3 +1,4 @@
+import { newDocument, showBlockInspector, applyToolbarFormat } from './ui-test-utils.mjs'
 import { _electron as electron, expect } from '@playwright/test'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -10,9 +11,10 @@ const complex = '# Rich heading\r\n\r\nParagraph with **bold** and [reference][t
 await writeFile(path.join(library, 'complex.md'), complex)
 await writeFile(path.join(library, 'other.md'), '# Destination\n\nLocal link opened.\n')
 await writeFile(path.join(library, 'empty.md'), '')
+await writeFile(path.join(library, 'formula.tex'), 'x^2')
 await writeFile(path.join(library, 'pixel.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lNcAAAAASUVORK5CYII=', 'base64'))
 const firstPath = path.join(library, 'first.md')
-const env = { ...process.env, OOPSMD_USER_DATA: path.join(temporary, 'profile') }; delete env.ELECTRON_RUN_AS_NODE
+const env = { ...process.env, MARKFLOW_USER_DATA: path.join(temporary, 'profile') }; delete env.ELECTRON_RUN_AS_NODE
 const app = await electron.launch({ ...(process.env.OOPSMD_SMOKE_EXE ? { executablePath: process.env.OOPSMD_SMOKE_EXE, args: [] } : { args: [root] }), env })
 const errors = [], consoleErrors = [], checks = []
 const passed = name => { checks.push(name); console.log('PASS ' + name) }
@@ -37,7 +39,7 @@ try {
     BrowserWindow.getAllWindows()[0].setContentSize(1440, 940)
   }, firstPath)
   const rich = page.locator('.rich-editor .tiptap'), source = page.locator('.cm-content:visible')
-  const saveButton = page.getByRole('button', { name: /保存.*Ctrl S/ })
+  const saveButton = page.getByRole('button', { name: /^保存(?: (?:Ctrl|⌘) S)?$/ })
   const ready = async () => { await expect(page.locator('.navigation-shield')).toHaveCount(0); await expect(saveButton).toBeEnabled() }
   const save = async (filename, expected) => {
     await ready(); await saveButton.click()
@@ -63,6 +65,7 @@ try {
   }
 
   await ready(); await expect(rich).toBeVisible(); await expect(source).toHaveCount(0)
+  await showBlockInspector(page)
   await rich.focus(); await page.keyboard.insertText('Alpha'); await page.keyboard.press('Enter')
   await expect(page.getByLabel('文档 Mark').getByRole('button', { name: /空白 Mark/ })).toBeVisible()
   await page.keyboard.insertText('Beta'); await page.keyboard.press('Shift+Enter'); await page.keyboard.insertText('Gamma')
@@ -82,21 +85,21 @@ try {
   for (let index = 0; index < 4; index++) await page.keyboard.press('ArrowRight')
   await page.keyboard.insertText('!')
   await save(firstPath, initial.replace('Beta', 'Beta!'))
-  await source.focus(); await page.keyboard.press('Control+z'); await save(firstPath, initial)
+  await source.focus(); await page.keyboard.press('ControlOrMeta+z'); await save(firstPath, initial)
   await page.getByLabel('文档 Mark').getByRole('button', { name: /^跳转 Mark \d+ Alpha$/ }).click()
   await page.getByRole('button', { name: '实时预览', exact: true }).click(); await expect(rich).toBeVisible()
   await expect(page.locator('.font-control')).toHaveAttribute('title', '当前 Mark：Alpha')
   passed('switching surfaces without edits follows the current Mark and never edits a stale source selection')
 
-  await selectText('Alpha'); await page.getByRole('button', { name: '加粗', exact: true }).filter({ visible: true }).click()
+  await selectText('Alpha'); await applyToolbarFormat(page, '加粗')
   await expect(rich.locator('strong')).toHaveText('Alpha')
   const bold = '**Alpha**\n\nBeta\\\nGamma'
   await save(firstPath, bold)
   await expect(rich).not.toContainText('**')
-  await rich.focus(); await page.keyboard.press('Control+z'); await save(firstPath, initial)
-  await rich.focus(); await page.keyboard.press('Control+Shift+Z'); await save(firstPath, bold)
+  await rich.focus(); await page.keyboard.press('ControlOrMeta+z'); await save(firstPath, initial)
+  await rich.focus(); await page.keyboard.press('ControlOrMeta+Shift+Z'); await save(firstPath, bold)
   for (const [label, tag] of [['下划线', 'u'], ['删除线', 's'], ['斜体', 'em'], ['上标', 'sup'], ['下标', 'sub'], ['荧光笔', 'mark']]) {
-    await selectText('Alpha'); await page.getByRole('button', { name: label, exact: true }).filter({ visible: true }).click(); await expect(rich.locator(tag)).toContainText('Alpha')
+    await selectText('Alpha'); await applyToolbarFormat(page, label); await expect(rich.locator(tag)).toContainText('Alpha')
   }
   const formatted = await save(firstPath)
   await page.getByRole('button', { name: '源码', exact: true }).click(); await expect(source).toBeVisible()
@@ -105,13 +108,24 @@ try {
   await save(firstPath, formatted)
   passed('all seven toolbar formats remain rendered while focused and survive source/live roundtrip')
 
-  await page.waitForTimeout(650); await rich.focus(); await page.keyboard.press('Control+End'); await page.keyboard.insertText('MODE_MARKER')
-  for (const name of ['源码', '对照', '实时预览', 'Geek', 'Markdown', '源码']) await page.getByRole('button', { name, exact: true }).click()
-  await source.focus(); await page.keyboard.press('Control+z'); await save(firstPath, formatted)
-  await source.focus(); await page.keyboard.press('Control+Shift+Z'); await save(firstPath, formatted + 'MODE_MARKER')
-  await source.focus(); await page.keyboard.press('Control+z'); await save(firstPath, formatted)
+  await page.waitForTimeout(650); await rich.focus(); await page.keyboard.press('ControlOrMeta+End'); await page.keyboard.insertText('MODE_MARKER')
+  for (const name of ['源码', '对照', '实时预览']) await page.getByRole('button', { name, exact: true }).click()
+  await open('formula.tex')
+  await expect(page.locator('.document-type')).toHaveText('Formula')
+  await expect(rich).toHaveCount(0)
+  await source.focus(); await page.keyboard.press('ControlOrMeta+End'); await page.keyboard.insertText(' + 1')
+  await source.press('ControlOrMeta+z'); await expect(source).toHaveText('x^2')
+  await source.press('ControlOrMeta+Shift+Z'); await expect(source).toHaveText('x^2 + 1')
+  await saveButton.click(); await expect.poll(() => readFile(path.join(library, 'formula.tex'), 'utf8')).toBe('x^2 + 1')
+  await open('first.md')
+  await expect(page.locator('.document-type')).toHaveText('Markdown')
+  await expect(rich).toContainText('MODE_MARKER')
+  await page.getByRole('button', { name: '源码', exact: true }).click()
+  await source.focus(); await page.keyboard.press('ControlOrMeta+z'); await save(firstPath, formatted)
+  await source.focus(); await page.keyboard.press('ControlOrMeta+Shift+Z'); await save(firstPath, formatted + 'MODE_MARKER')
+  await source.focus(); await page.keyboard.press('ControlOrMeta+z'); await save(firstPath, formatted)
   await page.getByRole('button', { name: '实时预览', exact: true }).click()
-  passed('shared undo survives first save, all layouts and Markdown/Geek changes')
+  passed('Markdown undo survives first save, all layouts and a separate Formula tab; Formula saves plain source with its own undo history')
 
   await open('complex.md'); await expect(rich.locator('.katex')).toHaveCount(2)
   await expect(rich.locator('h1')).toHaveText('Rich heading'); await expect(rich.locator('table')).toHaveCount(1)
@@ -129,7 +143,8 @@ try {
   await selectText('Paragraph'); await page.keyboard.press('ArrowLeft'); await page.keyboard.insertText('NEW ')
   const adjacent = complex.replace('Paragraph with', 'NEW Paragraph with')
   await save(path.join(library, 'complex.md'), adjacent)
-  await rich.focus(); await page.keyboard.press('Control+z'); await save(path.join(library, 'complex.md'), complex)
+  await rich.focus(); await page.keyboard.press('ControlOrMeta+z'); await save(path.join(library, 'complex.md'), complex)
+  await showBlockInspector(page)
   await page.getByLabel('文档 Mark').getByRole('button', { name: /^跳转 Mark \d+ one$/ }).click()
   await page.keyboard.press('End')
   await expect.poll(() => rich.evaluate(element => { const { $head } = element.editor.state.selection; return [$head.parent.textContent, $head.parentOffset] })).toEqual(['one', 3])
@@ -149,10 +164,10 @@ try {
   passed('incremental search retains input focus and never writes query characters into the document')
 
   await page.locator('.rich-math.is-block').hover(); await page.locator('.rich-math.is-block').getByRole('button', { name: '编辑公式' }).click()
-  const formula = page.getByRole('textbox', { name: 'LaTeX 公式' }); await formula.fill('x^3'); await formula.press('Control+s')
+  const formula = page.getByRole('textbox', { name: 'LaTeX 公式' }); await formula.fill('x^3'); await formula.press('ControlOrMeta+s')
   const mathEdit = beforeSearch.replace('$$\r\nx^2\r\n$$', () => '$$\r\nx^3\r\n$$')
   await save(path.join(library, 'complex.md'), mathEdit)
-  await rich.locator('a[data-link]').click({ modifiers: ['Control'] }); await ready(); await expect(page.locator('.document-name')).toHaveText('other.md')
+  await rich.locator('a[data-link]').click({ modifiers: ['ControlOrMeta'] }); await ready(); await expect(page.locator('.document-name')).toHaveText('other.md')
   await open('complex.md'); await save(path.join(library, 'complex.md'), mathEdit)
   passed('math edits retain rendered formulas and deliberate local-link navigation stays scoped')
 
@@ -164,15 +179,15 @@ try {
   await save(path.join(library, 'empty.md'), '中文输入\n\nsecond')
   passed('empty files and simulated IME composition remain editable without lost text')
 
-  await page.getByRole('button', { name: '新建标签', exact: true }).click(); await ready()
+  await newDocument(page); await ready()
   await page.getByRole('button', { name: '源码', exact: true }).click(); await source.focus(); await page.keyboard.insertText('![pixel](pixel.png)')
   await page.getByRole('button', { name: '实时预览', exact: true }).click(); await expect(rich.locator('.rich-image img')).toHaveCount(0)
   const imagePath = path.join(library, 'image.md')
   await app.evaluate(({ dialog }, filename) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: filename }) }, imagePath)
   await save(imagePath, '![pixel](pixel.png)')
   await expect(rich.locator('.rich-image img')).toHaveAttribute('src', 'oops-asset://library/pixel.png')
-  await rich.focus(); await page.keyboard.press('Control+z'); await expect(rich.locator('.rich-image img')).toHaveCount(0)
-  await rich.focus(); await page.keyboard.press('Control+Shift+Z'); await expect(rich.locator('.rich-image img')).toHaveCount(1)
+  await rich.focus(); await page.keyboard.press('ControlOrMeta+z'); await expect(rich.locator('.rich-image img')).toHaveCount(0)
+  await rich.focus(); await page.keyboard.press('ControlOrMeta+Shift+Z'); await expect(rich.locator('.rich-image img')).toHaveCount(1)
   await save(imagePath, '![pixel](pixel.png)')
   passed('first save refreshes relative image scope without clearing undo history')
 

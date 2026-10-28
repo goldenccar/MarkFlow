@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "OopsMD: attach main process",
+      "name": "MarkFlow: attach main process",
       "type": "node",
       "request": "attach",
       "port": 9229,

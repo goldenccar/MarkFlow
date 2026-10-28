@@ -1,0 +1,16 @@
+.document-surface { position: relative; display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+.document-surface > .editor-area { min-width: 0; }
+.document-type { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; min-height: 24px; color: var(--muted); background: var(--shell); font-size: 11px; padding: 3px 7px; border-radius: 5px; margin-right: 6px; }
+.document-type .icon { width: 13px; height: 13px; }
+.new-document-control { position: relative; align-self: stretch; display: flex; align-items: center; flex-shrink: 0; -webkit-app-region: no-drag; z-index: 35; }
+.new-document-menu { position: fixed; width: 250px; max-width: calc(100vw - 24px); border: 1px solid var(--line); border-radius: 10px; padding: 6px; background: var(--surface-raised); color: var(--text); box-shadow: var(--menu-shadow); transform-origin: top left; animation: menu-enter 140ms cubic-bezier(.2,.7,.2,1); }
+.new-document-caption { display: block; padding: 5px 9px 6px; font-size: 11px; color: var(--subtle); }
+.new-document-menu button { width: 100%; min-height: 52px; justify-content: flex-start; text-align: left; padding: 8px 9px; gap: 10px; border-radius: 6px; }
+.new-document-menu button:focus-visible { outline-offset: -2px; background: var(--hover); }
+.new-document-menu button > .icon { width: 17px; height: 17px; color: var(--muted); }
+.new-document-menu button > span { display: flex; flex-direction: column; gap: 3px; }
+.new-document-menu strong { font-size: 12px; font-weight: 600; }
+.new-document-menu small { color: var(--muted); font-size: 11px; }
+.new-document-menu .document-extension { margin-left: auto; color: var(--subtle); font: 11px/1.4 var(--font-mono); }
+@media (max-width: 1020px) { .document-type { margin-right: 2px; padding-inline: 5px; } }
+@media (prefers-reduced-motion: reduce) { .new-document-menu { animation: none; } }

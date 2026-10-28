@@ -41,7 +41,7 @@ describe('Markdown and math rendering', () => {
     assert.match(result, new RegExp(`<div[^>]*data-mark-id="${id}"[^>]*style="[^\"]*font-size:24px;?"`))
     assert.ok(result.includes('katex')); assert.ok(result.includes('FangSong'))
   })
-  it('excludes Mark metadata when switching a styled formula into Geek mode', () => {
+  it('excludes Mark metadata when switching a styled formula into Formula mode', () => {
     const source = setMarkStyle('x^2 + y^2', 0, { fontSize: 24 })
     assert.equal(render(source, 'latex-math'), render('x^2 + y^2', 'latex-math'))
     assert.ok(!render(source, 'latex-math').includes('公式尚不能渲染'))

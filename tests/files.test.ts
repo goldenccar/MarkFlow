@@ -109,13 +109,16 @@ test('save returns its captured snapshot when an external edit follows the atomi
   try {
     const filename = path.join(f.root, 'note.md')
     await fs.writeFile(filename, '\uFEFFbaseline\r\n')
+    const canonicalFilename = await fs.realpath(filename)
     const file = await f.service.read('note.md')
     const rename = fs.rename.bind(fs)
+    let injected = false
     context.mock.method(fs, 'rename', async (from: Parameters<typeof fs.rename>[0], to: Parameters<typeof fs.rename>[1]) => {
       await rename(from, to)
-      if (to === filename) await fs.writeFile(filename, 'external after atomic rename')
+      if (to === canonicalFilename) { injected = true; await fs.writeFile(filename, 'external after atomic rename') }
     })
     const saved = await f.service.write('note.md', 'requested snapshot\n', file.revision)
+    assert.equal(injected, true, 'the simulated external edit must run after the document rename')
     assert.equal(saved.content, 'requested snapshot\n')
     assert.equal(saved.bom, true)
     assert.equal(saved.eol, '\r\n')
@@ -208,7 +211,7 @@ test('moving a directory migrates every recovery draft, including closed nested 
   } finally { await f.cleanup() }
 })
 
-test('case-only file and directory renames retain recovery under the same hash', async () => {
+test('case-only file and directory renames retain recovery at the requested spelling', async () => {
   const f = await fixture()
   try {
     await fs.mkdir(path.join(f.root, 'folder'))
@@ -223,6 +226,32 @@ test('case-only file and directory renames retain recovery under the same hash',
     assert.equal(draft?.content, 'unsaved')
     assert.equal(draft?.revision, file.revision)
   } finally { await f.cleanup() }
+})
+
+test('failed case-only rename restores the original file, draft and archive without leaving temporary files', async context => {
+  const f = await fixture()
+  try {
+    await fs.writeFile(path.join(f.root, 'note.md'), 'original bytes')
+    const file = await f.service.read('note.md')
+    await f.service.draft({ path: file.path, content: 'unsaved recovery', revision: file.revision, updatedAt: new Date().toISOString() })
+    const archive = await f.service.archive('note.md')
+    const destination = path.join(await fs.realpath(f.root), 'NOTE.md')
+    const rename = fs.rename.bind(fs)
+    let blocked = false
+    context.mock.method(fs, 'rename', async (from: Parameters<typeof fs.rename>[0], to: Parameters<typeof fs.rename>[1]) => {
+      if (to === destination) { blocked = true; throw new Error('simulated destination rename failure') }
+      await rename(from, to)
+    })
+    await assert.rejects(f.service.move('note.md', 'NOTE.md'), /simulated destination rename failure/)
+    context.mock.restoreAll()
+    assert.equal(blocked, true)
+    assert.deepEqual(await fs.readdir(f.root), ['note.md'])
+    assert.equal(await fs.readFile(path.join(f.root, 'note.md'), 'utf8'), 'original bytes')
+    const reopened = new FileService(f.root, f.userData)
+    assert.equal((await reopened.getDraft('note.md'))?.content, 'unsaved recovery')
+    assert.deepEqual(await reopened.listArchive(), archive)
+    if (process.platform !== 'win32') assert.equal(await reopened.getDraft('NOTE.md'), null)
+  } finally { context.mock.restoreAll(); await f.cleanup() }
 })
 
 test('failed disk move rolls back draft copies and destination draft collisions preserve both recoveries', async () => {

@@ -1,3 +1,4 @@
+import { showBlockInspector } from './ui-test-utils.mjs'
 import { chromium, expect } from '@playwright/test'
 import { mkdir, mkdtemp } from 'node:fs/promises'
 import path from 'node:path'
@@ -43,7 +44,7 @@ for (const command of ['dev', 'debug']) {
   }
   const port = await freePort()
   const inspectorPort = command === 'debug' ? 9229 : await freePort()
-  const env = { ...process.env, OOPSMD_USER_DATA: path.join(temporary, command), V8_INSPECTOR_PORT: String(inspectorPort) }
+  const env = { ...process.env, MARKFLOW_USER_DATA: path.join(temporary, command), V8_INSPECTOR_PORT: String(inspectorPort) }
   delete env.ELECTRON_RUN_AS_NODE
   const child = spawn(process.execPath, [npmCli, 'run', command, '--', `--remoteDebuggingPort=${port}`], { cwd: root, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
   let logs = ''
@@ -75,6 +76,7 @@ for (const command of ['dev', 'debug']) {
     await expect(page.locator('.rich-editor .tiptap')).toHaveAttribute('contenteditable', 'true')
     await expect(page.locator('.rich-editor .tiptap')).toBeVisible()
     await page.locator('.rich-editor .tiptap').focus(); await page.keyboard.insertText('Debug session')
+    await showBlockInspector(page)
     await expect(page.getByRole('button', { name: '跳转 Mark 1 Debug session', exact: true })).toBeEnabled()
     await expect.poll(async () => markdownBody(await page.evaluate(async () => (await window.oops.listUntitled())[0]?.content) ?? '')).toBe('Debug session')
     await page.reload()

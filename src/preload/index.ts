@@ -15,6 +15,8 @@ const listen = (channel: string, fn: (...args: any[]) => void) => {
   return () => ipcRenderer.removeListener(channel, handler)
 }
 const api: OopsAPI = {
+  platform: process.platform,
+  setWindowAppearance: (appearance) => ipcRenderer.invoke('view:appearance', appearance),
   fonts: () => ipcRenderer.invoke('fonts:list'),
   chooseLibrary: () => rememberLibrary(ipcRenderer.invoke('library:choose')),
   openProject: (root) => rememberLibrary(ipcRenderer.invoke('project:open', root)),

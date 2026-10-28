@@ -1,6 +1,6 @@
 import type { MarkId } from './mark'
 
-/** Design contract only: no pagination, canvas, PDF SDK or export engine is loaded by OopsMD. */
+/** Design contract only: no pagination, canvas, PDF SDK or export engine is loaded by MarkFlow. */
 export interface PointPt { x: number; y: number }
 export interface RectPt extends PointPt { width: number; height: number }
 /** [a,b,c,d,e,f], x'=ax+cy+e and y'=bx+dy+f. Coordinates are points at 1/72 inch. */

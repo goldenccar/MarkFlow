@@ -9,7 +9,7 @@ const library = path.join(temporary, 'library')
 await mkdir(library)
 const code = 'const sample = "复制测试"\nconsole.log(sample)\n'
 await writeFile(path.join(library, 'copy.md'), '# Copy\n\n```js\n' + code + '```\n')
-const env = { ...process.env, OOPSMD_USER_DATA: path.join(temporary, 'profile') }
+const env = { ...process.env, MARKFLOW_USER_DATA: path.join(temporary, 'profile') }
 delete env.ELECTRON_RUN_AS_NODE
 const app = await electron.launch({
   ...(process.env.OOPSMD_SMOKE_EXE ? { executablePath: process.env.OOPSMD_SMOKE_EXE, args: [] } : { args: [root] }),

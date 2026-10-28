@@ -23,7 +23,7 @@ const gitBin = process.env.OOPSMD_SMOKE_EXE
   ? path.join(path.dirname(process.env.OOPSMD_SMOKE_EXE), 'resources', 'git', 'cmd', 'git.exe') : 'git'
 const git = (...args) => execFileSync(gitBin, args, { cwd: project, encoding: 'utf8', windowsHide: true }).trim()
 git('init', '-b', 'main')
-git('config', 'user.name', 'OopsMD Archive Test')
+git('config', 'user.name', 'MarkFlow Archive Test')
 git('config', 'user.email', 'test@example.invalid')
 git('add', '.')
 git('commit', '-m', 'baseline')
@@ -31,7 +31,7 @@ const initialHead = git('rev-parse', 'HEAD')
 const originalBytes = await readFile(path.join(project, 'folder/note.md'))
 const hash = createHash('sha256').update(process.platform === 'win32' ? project.toLowerCase() : project).digest('hex')
 const metadata = path.join(profile, 'archive', `${hash}.json`)
-const env = { ...process.env, OOPSMD_USER_DATA: profile }
+const env = { ...process.env, MARKFLOW_USER_DATA: profile }
 delete env.ELECTRON_RUN_AS_NODE
 const checks = []
 const errors = []

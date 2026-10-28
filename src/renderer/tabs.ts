@@ -6,6 +6,19 @@ export interface DocumentTab {
   layout?: Layout
 }
 export const sessionKey = 'oopsmd.tabs.v1'
+export function canStickPinnedTabs({ viewportWidth, pinnedCount, pinnedWidth, gap, regularWidth }: {
+  viewportWidth: number; pinnedCount: number; pinnedWidth: number; gap: number
+  /** Width reserved for one ordinary tab; zero when every tab is pinned. */
+  regularWidth: number
+}): boolean {
+  if (![viewportWidth, pinnedCount, pinnedWidth, gap, regularWidth].every(Number.isFinite)
+    || viewportWidth < 0 || !Number.isInteger(pinnedCount) || pinnedCount < 0
+    || pinnedWidth <= 0 || gap < 0 || regularWidth < 0) return false
+  if (pinnedCount === 0) return true
+  const pinnedSpace = pinnedCount * pinnedWidth + (pinnedCount - 1) * gap
+  const regularSpace = regularWidth > 0 ? gap + regularWidth : 0
+  return pinnedSpace + regularSpace <= viewportWidth
+}
 export function fileTabId(root: string, path: string) { return `${root.replaceAll('\\', '/').toLowerCase()}/${path.toLowerCase()}` }
 export function orderTabs(tabs: DocumentTab[]) { return [...tabs.filter(tab => tab.pinned), ...tabs.filter(tab => !tab.pinned)] }
 export function reorderTabs(tabs: DocumentTab[], source: string, target: string) {

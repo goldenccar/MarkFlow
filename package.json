@@ -1,9 +1,9 @@
 {
-  "name": "oopsmd",
+  "name": "markflow",
   "version": "0.1.0",
   "private": true,
   "description": "Local Markdown and LaTeX math notebook with deliberate Git history",
-  "author": "OopsMD",
+  "author": "MarkFlow",
   "license": "MIT",
   "type": "module",
   "overrides": {
@@ -29,7 +29,7 @@
   },
   "build": {
     "appId": "app.oopsmd.desktop",
-    "productName": "OopsMD",
+    "productName": "MarkFlow",
     "directories": {
       "output": "release"
     },
@@ -55,7 +55,7 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "artifactName": "OopsMD-${version}-win-x64-setup.${ext}"
+      "artifactName": "MarkFlow-${version}-win-x64-setup.${ext}"
     }
   },
   "dependencies": {

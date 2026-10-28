@@ -1,20 +1,31 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type MouseEvent } from 'react'
-import BlockEditor, { type BlockEditorHandle } from './BlockEditor'
-import Preview, { getHeadings } from './Preview'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type MouseEvent } from 'react'
+import { getDocumentModule, normalizeDocumentLayout, registeredDocumentModules, modeForPath, type DocumentEditorHandle } from './documents'
+import DocumentNavigation from './DocumentNavigation'
+import { useWorkspaceMotion } from './useWorkspaceMotion'
+import { useLatestEvent } from './useLatestEvent'
+import { useReadingHeading } from './useReadingHeading'
+import { useResolvedTheme } from './useResolvedTheme'
+import ThemePicker from './ThemePicker'
+import SelectControl from './SelectControl'
+import ThresholdField from './ThresholdField'
+import QuestionDialog from './QuestionDialog'
+import './document-workspace.css'
 import { Icon } from './Icons'
-import { fileTabId, orderTabs, readTabSession, reorderTabs, sessionKey, type DocumentTab } from './tabs'
+import { canStickPinnedTabs, fileTabId, orderTabs, readTabSession, reorderTabs, sessionKey, type DocumentTab } from './tabs'
 import { useOutline } from './useOutline'
 import { archiveOwner, filterTree, moveDestination } from './treeModel'
 import { shouldAutoCommit } from '../shared/changes'
 import { countChanges } from './changeCounter'
 import { initializeDocumentContent, isDocDirty, type DocumentContent } from './documentSession'
-import { ensureMarkDocument, readMarkDocument, type MarkSelection, type MarkStylePatch } from '../shared/marks'
+import { readMarkDocument, type MarkSelection, type MarkStylePatch } from '../shared/marks'
 import { defaultSettings, type FontOption, type ArchiveEntry, type ContentMode, type DiskFile, type FileEntry, type GitStatus, type HistoryEntry, type Library, type Settings, type UntitledDraft } from '../shared/types'
 
 type Doc = DocumentContent & { tabId?: string; root?: string; file: DiskFile; baseline: string; mode: ContentMode; untitledId?: string; editorKey?: string }
 type DocInput = Omit<Doc, 'cleanContent'> & { cleanContent?: string }
-type Question = { title: string; detail?: string; initial?: string; buttons: string[]; resolve: (answer: string | null) => void }
+type Question = { id: string; title: string; detail?: string; initial?: string; buttons: string[]; resolve: (answer: string | null) => void }
 const api = window.oops
+const isMac = api?.platform === 'darwin'
+const shortcut = (key: string) => `${isMac ? '⌘' : 'Ctrl'} ${key}`
 const isText = (path: string) => /\.(md|markdown|mdown|txt|tex)$/i.test(path)
 const normalize = (s: string) => s.replace(/\r\n|\r/g, '\n')
 const baselineText = (version: string | null, disk: string) => normalize(version === null ? disk : version.replace(/^\uFEFF/, ''))
@@ -46,9 +57,21 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('')
   const [closedTabs, setClosedTabs] = useState<DocumentTab[]>(initialSession.current.closed)
   const [tabMenu, setTabMenu] = useState<{ id: string; x: number; y: number } | null>(null)
+  const tabMenuEl = useRef<HTMLDivElement>(null)
+  const tabMenuSource = useRef<HTMLButtonElement | null>(null)
+  const openTabMenu = (element: HTMLElement, id: string, x?: number, y?: number) => {
+    const bounds = element.getBoundingClientRect()
+    tabMenuSource.current = element.querySelector<HTMLButtonElement>('.tab-select')
+    setTabMenu({ id, x: Math.max(8, Math.min(x ?? bounds.left, window.innerWidth - 225)), y: Math.max(8, y ?? bounds.bottom + 4) })
+  }
   const [fonts, setFonts] = useState<FontOption[]>([])
   const [formatMenu, setFormatMenu] = useState(false)
+  const formatMenuHost = useRef<HTMLDivElement>(null)
+  const formatMenuTrigger = useRef<HTMLButtonElement>(null)
+  const [newMenu, setNewMenu] = useState(false)
+  const newMenuHost = useRef<HTMLDivElement>(null)
   const [markSelection, setMarkSelection] = useState<{ documentKey: string; mark: MarkSelection } | null>(null)
+  const [headingSelection, setHeadingSelection] = useState<{ documentKey: string; index: number | null } | null>(null)
   const [markMenu, setMarkMenu] = useState<{ documentKey: string; content: string; id: string; x: number; y: number } | null>(null)
   const markMenuEl = useRef<HTMLDivElement>(null)
   const markMenuSource = useRef<HTMLButtonElement>(null)
@@ -66,12 +89,13 @@ export default function App() {
       buffers.current.set(value.tabId, value)
       setActiveTab(value.tabId)
       const previous = tabsRef.current.find(tab => tab.id === value.tabId)
-      const item: DocumentTab = { id: value.tabId, root: value.root, path: value.file.path, title: value.untitledId ? draftTitle(value) : basename(value.file.path), mode: value.mode, untitledId: value.untitledId, pinned: previous?.pinned ?? false, layout: previous?.layout ?? (value.mode === 'latex-math' ? 'split' : 'preview'), dirty: isDocDirty(value) }
+      const item: DocumentTab = { id: value.tabId, root: value.root, path: value.file.path, title: value.untitledId ? draftTitle(value) : basename(value.file.path), mode: value.mode, untitledId: value.untitledId, pinned: previous?.pinned ?? false, layout: normalizeDocumentLayout(value.mode, previous?.layout), dirty: isDocDirty(value) }
       if (JSON.stringify(previous) !== JSON.stringify(item)) setTabs(orderTabs(previous ? tabsRef.current.map(tab => tab.id === item.id ? item : tab) : [...tabsRef.current, item]))
     } else setActiveTab('')
     docRef.current = value; renderDoc(value)
   }
   const [settings, setSettings] = useState<Settings>(defaultSettings)
+  const resolvedTheme = useResolvedTheme(settings.theme)
   const settingsQueue = useRef<Promise<unknown>>(Promise.resolve())
   const settingsRef = useRef(settings); settingsRef.current = settings
   const [git, setGit] = useState<GitStatus | null>(null)
@@ -80,7 +104,22 @@ export default function App() {
   const [selected, setSelected] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [sidebar, setSidebar] = useState(true)
+  const [navigationPinned, setNavigationPinned] = useState(() => localStorage.getItem('oopsmd.navigation.pinned') === 'true')
+  const { rootRef, transitionLayout } = useWorkspaceMotion()
   const [panel, setPanel] = useState<'none' | 'settings' | 'git' | 'history'>('none')
+  const panelRef = useRef<HTMLElement>(null)
+  const panelSource = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    if (panel === 'none') return
+    const focused = document.activeElement as HTMLElement | null
+    if (focused && focused !== document.body && !panelRef.current?.contains(focused)) panelSource.current = focused
+    panelRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
+  }, [panel])
+  const closePanel = () => {
+    setPanel('none')
+    const source = panelSource.current
+    if (source?.isConnected && !source.closest('[inert]')) source.focus({ preventScroll: true })
+  }
   const [status, setStatus] = useState('本地文件 · 离线可用')
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
@@ -92,7 +131,7 @@ export default function App() {
   const [preview, setPreview] = useState('')
   const [external, setExternal] = useState<DiskFile | null>(null)
   const [question, setQuestion] = useState<Question | null>(null)
-  const [answer, setAnswer] = useState('')
+  const questionRef = useRef<Question | null>(null)
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [split, setSplit] = useState(50)
   const [query, setQuery] = useState<string | null>(null)
@@ -100,9 +139,15 @@ export default function App() {
   const [recordPaths, setRecordPaths] = useState<string[]>([])
   const [attachments, setAttachments] = useState<string[]>([])
   const [recordMessage, setRecordMessage] = useState('记录文件与附件变更')
-  const blockEditor = useRef<BlockEditorHandle>(null)
+  const blockEditor = useRef<DocumentEditorHandle>(null)
   const activeEditor = () => blockEditor.current
+  useEffect(() => {
+    setQuery(null)
+    setSearchResult({ count: 0, index: 0 })
+    blockEditor.current?.search('')
+  }, [doc?.editorKey, settings.layout])
   const previewEl = useRef<HTMLElement>(null)
+  const documentSurface = useRef<HTMLDivElement>(null)
   const autoAttempt = useRef('')
   const [autoPaused, setAutoPaused] = useState(false)
   const loadingRef = useRef(false)
@@ -116,14 +161,22 @@ export default function App() {
   const allFiles = useMemo(() => flatten(entries), [entries])
   const { blocks, content: outlineContent, error: outlineError } = useOutline(preview, doc?.editorKey ?? '', doc?.mode === 'markdown')
   useEffect(() => { if (outlineError) setNotice(outlineError) }, [outlineError])
-  const headings = useMemo(() => getHeadings(preview), [preview])
+  const documentModule = getDocumentModule(doc?.mode ?? 'markdown')
+  const DocumentEditor = documentModule.editor, DocumentPreview = documentModule.preview
+  const headings = useMemo(() => documentModule.getOutline(preview), [documentModule, preview])
   const documentFont = fonts.find(font => font.id === settings.fontFamily)?.family ?? 'system-ui, sans-serif'
   const activeMark = doc?.mode === 'markdown' && markSelection && markSelection.documentKey === doc.editorKey ? markSelection.mark : null
+  const currentHeadingId = headingSelection?.documentKey === doc?.editorKey && headingSelection?.index != null ? headings[headingSelection.index]?.id : undefined
+  const activeHeadingId = useReadingHeading({ scopeRef: documentSurface, documentKey: doc?.editorKey ?? '', headings, layout: settings.layout, caretHeadingId: currentHeadingId })
   const markMenuIndex = markMenu ? blocks.findIndex(mark => mark.id === markMenu.id) : -1
   const markMenuReady = !!markMenu && !busy && !navigating && markMenu.documentKey === doc?.editorKey && markMenu.content === doc?.content && outlineContent === doc?.content && markMenuIndex >= 0
   const toolbarFont = activeMark?.style.fontFamily ?? settings.fontFamily
   const toolbarSize = activeMark?.style.fontSize ?? settings.fontSize
   const toolbarSizes = [...new Set([...Array.from({ length: 17 }, (_, index) => index + 12), ...(doc?.mode === 'markdown' ? [10, 11, 32, 36, 40, 48, 56, 64, 72, 96] : []), toolbarSize])].sort((a, b) => a - b)
+  useEffect(() => {
+    if (initializing || !api?.setWindowAppearance) return
+    void api.setWindowAppearance({ theme: settings.theme, mode: doc?.mode ?? 'markdown' }).catch(error => setNotice(failure(error)))
+  }, [settings.theme, doc?.mode, initializing])
   const receiveMarkSelection = useCallback((mark: MarkSelection | null, documentKey: string) => {
     if (documentKey !== docRef.current?.editorKey) return
     setMarkSelection(previous => {
@@ -132,8 +185,14 @@ export default function App() {
       return { documentKey, mark }
     })
   }, [])
+  const receiveHeadingSelection = useCallback((index: number | null, documentKey: string) => {
+    if (documentKey !== docRef.current?.editorKey) return
+    setHeadingSelection(previous => previous?.documentKey === documentKey && previous.index === index ? previous : { documentKey, index })
+  }, [])
   const ask = (title: string, detail: string, buttons: string[], initial?: string): Promise<string | null> => new Promise((resolve) => {
-    setAnswer(initial ?? ''); setQuestion({ title, detail, buttons, initial, resolve })
+    if (questionRef.current) { resolve(null); return }
+    const next = { id: crypto.randomUUID(), title, detail, buttons, initial, resolve }
+    questionRef.current = next; setQuestion(next)
   })
   const run = async (operation: () => Promise<unknown>) => {
     try { await operation() } catch (error) { setNotice(failure(error)) }
@@ -279,7 +338,7 @@ export default function App() {
           else setDoc({ ...cached, file: opened.file, content: normalize(opened.file.content), cleanContent: undefined, baseline: baselineText(opened.baseline, opened.file.content) })
         }
       }
-      await updateSettings({ layout: cached.mode === 'latex-math' ? (tab.layout === 'source' ? 'source' : 'split') : (tab.layout ?? 'preview') })
+      await updateSettings({ layout: normalizeDocumentLayout(cached.mode, tab.layout) })
       setPreview(docRef.current?.content ?? '')
       setStatus(isDocDirty(docRef.current) ? '未保存 · 草稿已保护' : '已打开')
     } else if (tab.untitledId) {
@@ -329,7 +388,7 @@ export default function App() {
   function openSearch() { setQuery(previous => previous ?? ''); requestAnimationFrame(() => searchInput.current?.focus()) }
   function applyTypography(patch: MarkStylePatch | null) {
     if (docRef.current?.mode === 'markdown') {
-      try { activeEditor()?.applyMarkStyle(patch) } catch (error) { setNotice(failure(error)) }
+      try { activeEditor()?.applyMarkStyle?.(patch) } catch (error) { setNotice(failure(error)) }
     } else if (patch) {
       const next: Partial<Settings> = {}
       if (patch.fontFamily != null) next.fontFamily = patch.fontFamily
@@ -349,16 +408,7 @@ export default function App() {
     setMarkMenu(null)
     activeEditor()?.flush()
     if (!target || busyRef.current || loadingRef.current || target.documentKey !== docRef.current?.editorKey || target.content !== docRef.current?.content) return
-    activeEditor()?.markCommand({ type, id: target.id, index })
-  }
-  async function setMode(mode: ContentMode) {
-    activeEditor()?.flush()
-    const current = docRef.current
-    if (!current) return
-    const content = mode === 'markdown' && current.mode !== mode ? ensureMarkDocument(current.content) : current.content
-    setDoc({ ...current, mode, content, cleanContent: isDocDirty(current) ? current.cleanContent : content })
-    setPreview(docRef.current?.content ?? '')
-    await updateSettings({ layout: mode === 'latex-math' ? 'split' : 'preview' })
+    activeEditor()?.markCommand?.({ type, id: target.id, index })
   }
   async function loadDocument(relative: string, anchor?: string) {
     if (!isText(relative)) { await api.openAttachment(relative); return }
@@ -383,10 +433,10 @@ export default function App() {
       const savedSettings = await api.settings(); settingsRef.current = savedSettings; setSettings(savedSettings)
       positionRef.current = savedSettings.positions[`${libraryRootRef.current}/${relative}`] ?? { cursor: 0, scroll: 0 }
       previewScrollRef.current = savedSettings.positions[`${libraryRootRef.current}/${relative}`]?.previewScroll ?? 0
-      const mode = tabsRef.current.find(tab => tab.id === tabId)?.mode ?? (/\.tex$/i.test(relative) ? 'latex-math' : 'markdown')
+      const mode = modeForPath(relative) ?? 'markdown'
       setDoc({ tabId, root: libraryRootRef.current, file: opened.file, content, baseline: baselineText(opened.baseline, opened.file.content), mode })
       const layout = tabsRef.current.find(tab => tab.id === tabId)?.layout
-      await updateSettings({ layout: mode === 'latex-math' ? (layout === 'source' ? 'source' : 'split') : (layout ?? 'preview') })
+      await updateSettings({ layout: normalizeDocumentLayout(mode, layout) })
       editedRef.current = false
       setAutoPaused(false)
       setPreview(docRef.current?.content ?? ''); setExternal(conflict); setSelected(relative); setFolder(dirname(relative)); setAttachments([])
@@ -405,21 +455,21 @@ export default function App() {
     if (relative) await readIntoEditor(relative)
     else await refreshGit()
   }
-  function startUntitled(draft?: UntitledDraft) {
+  function startUntitled(draft?: UntitledDraft, requestedMode: ContentMode = 'markdown') {
     const id = draft?.id ?? crypto.randomUUID()
-    const mode = draft?.mode ?? 'markdown'
+    const mode = draft?.mode ?? requestedMode
     const content = draft?.content ?? ''
-    setDoc({ file: { path: mode === 'latex-math' ? '未命名.tex' : '未命名.md', content: '', revision: '', eol: '\n', bom: false }, content, baseline: '', mode, untitledId: id, editorKey: `untitled:${id}` })
+    setDoc({ file: { path: '未命名' + getDocumentModule(mode).defaultExtension, content: '', revision: '', eol: '\n', bom: false }, content, baseline: '', mode, untitledId: id, editorKey: `untitled:${id}` })
     setStartup(false); setExternal(null); setSelected(''); setAttachments([]); setPanel('none'); setPreview(docRef.current?.content ?? '')
     setAutoPaused(false); autoAttempt.current = ''; editedRef.current = false
     positionRef.current = { cursor: 0, scroll: 0 }; previewScrollRef.current = 0
     setStatus(draft ? '已恢复草稿' : '未保存到项目 · 首次保存时选择项目')
     const savedLayout = tabsRef.current.find(tab => tab.untitledId === id)?.layout
-    const layout = mode === 'latex-math' ? (savedLayout === 'source' ? 'source' : 'split') : (savedLayout ?? 'preview')
+    const layout = normalizeDocumentLayout(mode, savedLayout)
     if (settingsRef.current.layout !== layout) void run(() => updateSettings({ layout }))
     requestAnimationFrame(() => activeEditor()?.focus())
   }
-  async function newDocument() { await navigate(async () => startUntitled()) }
+  async function newDocument(mode: ContentMode = 'markdown') { setNewMenu(false); await navigate(async () => startUntitled(undefined, mode)) }
   async function openDraft(draft: UntitledDraft) {
     if (docRef.current?.untitledId === draft.id) return
     await navigate(async () => startUntitled((await api.listUntitled()).find((item) => item.id === draft.id) ?? draft))
@@ -441,7 +491,7 @@ export default function App() {
     })
   }
   function jumpToAnchor(id: string) {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    document.getElementById(id)?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' })
   }
   async function newEntry(directory: boolean) {
     if (!directory) { await newDocument(); return }
@@ -460,6 +510,10 @@ export default function App() {
       if (kind === 'move') {
         const value = destination ?? await ask('重命名', '输入新的相对路径。拖动文件或文件夹也可以移动位置。', ['确定', '取消'], target)
         if (!value || value === target) return
+        const entry = allFiles.find(item => item.path === target)
+        if (!entry?.directory && modeForPath(target) && modeForPath(target) !== modeForPath(value)) {
+          throw new Error('重命名不能转换文档类型。请保留当前类型的扩展名；Markdown 与 Formula 请分别新建文档。')
+        }
         const result = await api.move(target, value)
         if (affectsCurrent) {
           const movedPath = result.path + original.file.path.slice(target.length)
@@ -588,7 +642,7 @@ export default function App() {
     if (confirmed !== '恢复') return
     if (isDocDirty(current) && !(await api.exportCopy(current.content))) return
     const raw = normalize((await api.version(current.file.path, entry.oid)).replace(/^\uFEFF/, ''))
-    const content = current.mode === 'markdown' ? ensureMarkDocument(raw) : raw
+    const content = getDocumentModule(current.mode).initialize(raw, raw).content
     setDoc({ ...current, content }); setPreview(docRef.current?.content ?? ''); editedRef.current = false; await persistDraft(); setPanel('none'); setStatus('已载入历史版本 · 尚未保存')
     })
   }
@@ -629,10 +683,41 @@ export default function App() {
   }, [])
   useEffect(() => { let cancelled = false; if (api) void api.fonts().then(options => { if (!cancelled) setFonts(options) }).catch(error => { if (!cancelled) setNotice(failure(error)) }); return () => { cancelled = true } }, [])
   useEffect(() => { const keep = new Set([...tabs, ...closedTabs].map(tab => tab.id)); for (const id of buffers.current.keys()) if (!keep.has(id)) { buffers.current.delete(id); tabPositions.current.delete(id); tabConflicts.current.delete(id) } }, [tabs, closedTabs])
-  useEffect(() => { const reveal = () => document.querySelector('[role=tab][aria-selected=true]')?.closest('.document-tab')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); reveal(); window.addEventListener('resize', reveal); return () => window.removeEventListener('resize', reveal) }, [activeTab])
+  const tabLayout = JSON.stringify(tabs.map(tab => [tab.id, tab.pinned]))
+  useEffect(() => {
+    let pending = false
+    const reveal = () => {
+      // Wait for the sidebar to settle so scrolling does not fight its translation.
+      if (rootRef.current?.dataset.layoutAnimating === 'true') { pending = true; return }
+      pending = false
+      const strip = rootRef.current?.querySelector<HTMLElement>('.tab-strip')
+      const tab = strip?.querySelector<HTMLElement>('.document-tab.active')
+      if (!strip || !tab) return
+      const pins = strip.querySelectorAll<HTMLElement>('.tab-pinned')
+      const regular = strip.querySelector<HTMLElement>('.document-tab:not(.tab-pinned)')
+      strip.dataset.scrollPins = String(!canStickPinnedTabs({
+        viewportWidth: strip.clientWidth,
+        pinnedCount: pins.length,
+        pinnedWidth: pins[0]?.getBoundingClientRect().width ?? 40,
+        gap: parseFloat(getComputedStyle(strip).columnGap) || 0,
+        regularWidth: regular?.getBoundingClientRect().width ?? 0
+      }))
+      const viewport = strip.getBoundingClientRect(), target = tab.getBoundingClientRect()
+      const pinnedSpace = tab.classList.contains('tab-pinned') ? 0 : parseFloat(getComputedStyle(tab).scrollMarginInlineStart) || 0
+      const left = viewport.left + pinnedSpace
+      // Scroll this rail only; scrollIntoView can also move overflow-hidden ancestors.
+      if (target.left < left) strip.scrollLeft += target.left - left
+      else if (target.right > viewport.right) strip.scrollLeft += target.right - viewport.right
+    }
+    const layoutChanged = (event: Event) => { if (pending && !(event as CustomEvent<{ active: boolean }>).detail.active) reveal() }
+    reveal()
+    window.addEventListener('resize', reveal)
+    document.addEventListener('workspace-layout-motion', layoutChanged)
+    return () => { window.removeEventListener('resize', reveal); document.removeEventListener('workspace-layout-motion', layoutChanged) }
+  }, [activeTab, sidebar, tabLayout])
   useEffect(() => { if (!initializing) { const timer = setTimeout(() => localStorage.setItem(sessionKey, JSON.stringify({ tabs, active: activeTab, closed: closedTabs })), 150); return () => clearTimeout(timer) } }, [tabs, activeTab, closedTabs, initializing])
   useEffect(() => { if (doc?.tabId) { if (external) tabConflicts.current.set(doc.tabId, external); else tabConflicts.current.delete(doc.tabId) } }, [external, doc?.tabId])
-  useEffect(() => { document.documentElement.dataset.theme = settings.theme }, [settings.theme])
+  useLayoutEffect(() => { document.documentElement.dataset.theme = resolvedTheme }, [resolvedTheme])
   useEffect(() => {
     if (!doc) { setCount(0); setCounted(null); return }
     let cancel: (() => void) | undefined
@@ -663,6 +748,10 @@ export default function App() {
   useEffect(() => {
     if (!api) return
     return api.onAction((action) => { void run(async () => {
+      if (questionRef.current) {
+        if ((action === 'undo' || action === 'redo') && document.activeElement?.matches('dialog input, dialog textarea')) document.execCommand(action)
+        return
+      }
       if (action === 'save') await save()
       if (action === 'open-library') await choose('library')
       if (action === 'open-file') await choose('file')
@@ -682,7 +771,7 @@ export default function App() {
   })
   useEffect(() => {
     if (!api) return
-    return api.onCloseRequest(() => { void run(() => navigate(async () => { if (await guardSwitch(true)) { await persistDraft(); localStorage.setItem(sessionKey, JSON.stringify({ tabs: tabsRef.current, active: docRef.current?.tabId ?? '', closed: closedTabs })); api.closeReady() } })) })
+    return api.onCloseRequest(() => { if (questionRef.current) return; void run(() => navigate(async () => { if (await guardSwitch(true)) { await persistDraft(); localStorage.setItem(sessionKey, JSON.stringify({ tabs: tabsRef.current, active: docRef.current?.tabId ?? '', closed: closedTabs })); api.closeReady() } })) })
   })
 
   useEffect(() => {
@@ -703,11 +792,45 @@ export default function App() {
     window.addEventListener('pointerdown', close); window.addEventListener('keydown', escape); window.addEventListener('resize', close)
     return () => { cancelAnimationFrame(frame); window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', escape); window.removeEventListener('resize', close) }
   }, [markMenu])
+  useLayoutEffect(() => {
+    if (!tabMenu || !tabMenuEl.current) return
+    const menu = tabMenuEl.current, bounds = menu.getBoundingClientRect()
+    menu.style.left = `${Math.max(8, Math.min(tabMenu.x, window.innerWidth - bounds.width - 8))}px`
+    menu.style.top = `${Math.max(8, Math.min(tabMenu.y, window.innerHeight - bounds.height - 8))}px`
+    menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true })
+    const restore = () => { if (tabMenuSource.current?.isConnected) tabMenuSource.current.focus({ preventScroll: true }) }
+    const dismiss = () => { if (menu.contains(document.activeElement)) restore(); setTabMenu(null) }
+    const outside = (event: PointerEvent) => { if (!menu.contains(event.target as Node)) setTabMenu(null) }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); restore(); setTabMenu(null) } }
+    window.addEventListener('resize', dismiss); document.addEventListener('pointerdown', outside); document.addEventListener('keydown', escape, true)
+    return () => { window.removeEventListener('resize', dismiss); document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', escape, true) }
+  }, [tabMenu])
+  useEffect(() => { setFormatMenu(false) }, [doc?.editorKey])
+  useLayoutEffect(() => {
+    if (!formatMenu) return
+    const host = formatMenuHost.current, menu = host?.querySelector<HTMLElement>('.format-menu'), container = host?.closest<HTMLElement>('.main')
+    if (!host || !menu || getComputedStyle(host).display === 'none') { setFormatMenu(false); return }
+    menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true })
+    const restore = () => {
+      if (formatMenuTrigger.current?.getClientRects().length) formatMenuTrigger.current.focus({ preventScroll: true })
+      else activeEditor()?.focus()
+    }
+    const dismiss = () => { if (host.contains(document.activeElement)) restore(); setFormatMenu(false) }
+    const outside = (event: PointerEvent) => { if (!host.contains(event.target as Node)) setFormatMenu(false) }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); restore(); setFormatMenu(false) } }
+    const initialWidth = container?.clientWidth
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => { if (container?.clientWidth !== initialWidth) dismiss() })
+    if (container) observer?.observe(container)
+    window.addEventListener('resize', dismiss); document.addEventListener('workspace-layout-motion', dismiss)
+    document.addEventListener('pointerdown', outside); document.addEventListener('keydown', escape, true)
+    return () => { observer?.disconnect(); window.removeEventListener('resize', dismiss); document.removeEventListener('workspace-layout-motion', dismiss); document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', escape, true) }
+  }, [formatMenu])
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
-      if (event.ctrlKey && !event.altKey && !event.isComposing) {
+      const primary = isMac ? event.metaKey : event.ctrlKey
+      if ((primary || event.ctrlKey) && !event.altKey && !event.isComposing) {
         const key = event.key.toLowerCase()
-        const handled = ['t', 'n', 'w', 'tab', 'f'].includes(key)
+        const handled = key === 'tab' ? event.ctrlKey : primary && ['t', 'n', 'w', 'f'].includes(key)
         if (handled) {
           event.preventDefault(); event.stopPropagation()
           if (question || initializing) return
@@ -719,19 +842,16 @@ export default function App() {
           return
         }
       }
-      if (event.ctrlKey && /^[1-9]$/.test(event.key)) { event.preventDefault(); if (question || initializing) return; const tab = event.key === '9' ? tabsRef.current.at(-1) : tabsRef.current[Number(event.key) - 1]; if (tab) void run(() => switchTab(tab.id)) }
-      if (event.key === 'Escape') { setTabMenu(null); setFormatMenu(false) }
+      if (primary && !event.altKey && !event.isComposing && /^[1-9]$/.test(event.key)) { event.preventDefault(); if (question || initializing) return; const tab = event.key === '9' ? tabsRef.current.at(-1) : tabsRef.current[Number(event.key) - 1]; if (tab) void run(() => switchTab(tab.id)) }
     }
-    const outside = (event: PointerEvent) => { const target = event.target as HTMLElement; if (!target.closest('.tab-context-menu')) setTabMenu(null); if (!target.closest('.format-overflow')) setFormatMenu(false) }
-    window.addEventListener('keydown', keydown, true); window.addEventListener('pointerdown', outside)
-    return () => { window.removeEventListener('keydown', keydown, true); window.removeEventListener('pointerdown', outside) }
+    window.addEventListener('keydown', keydown, true)
+    return () => { window.removeEventListener('keydown', keydown, true) }
   })
   function blockNodes(depth = 0) {
-    return <div className="block-tree" aria-label="文档 Mark" style={{ "--mark-rail": `${20 + depth * 16}px` } as CSSProperties}>{blocks.map((block, index) => <button disabled={busy || navigating || outlineContent !== doc?.content} key={block.id} data-mark-id={block.id} data-kind={block.type} title={block.label || '空白 Mark'} aria-label={'跳转 Mark ' + (index + 1) + ' ' + (block.label || '空白 Mark')} aria-current={activeMark?.from === block.from ? 'true' : undefined} style={{ paddingLeft: 28 + depth * 16 }} onClick={() => blockEditor.current?.jump(block.from)} onContextMenu={event => { event.preventDefault(); openMarkMenu(event.currentTarget, block.id, event.clientX || undefined, event.clientY || undefined) }} onKeyDown={event => { if (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10') { event.preventDefault(); openMarkMenu(event.currentTarget, block.id) } }}><span className="block-kind">{block.type === 'heading' ? 'H' + block.level : block.type === 'code' ? '</>' : block.type === 'math' ? '∑' : block.type === 'list' ? '≡' : '·'}</span><span>{block.label || '空白 Mark'}</span></button>)}</div>
+    return <div className="block-tree" aria-label="文档 Mark" style={{ "--mark-rail": `${20 + depth * 16}px` } as CSSProperties}>{blocks.map((block, index) => <button disabled={busy || navigating || outlineContent !== doc?.content} key={block.id} data-mark-id={block.id} data-kind={block.type} title={block.label || '空白 Mark'} aria-label={'跳转 Mark ' + (index + 1) + ' ' + (block.label || '空白 Mark')} aria-current={activeMark?.from === block.from ? 'true' : undefined} style={{ paddingLeft: 28 + depth * 16 }} onClick={() => blockEditor.current?.jump?.(block.from)} onContextMenu={event => { event.preventDefault(); openMarkMenu(event.currentTarget, block.id, event.clientX || undefined, event.clientY || undefined) }} onKeyDown={event => { if (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10') { event.preventDefault(); openMarkMenu(event.currentTarget, block.id) } }}><span className="block-kind">{block.type === 'heading' ? 'H' + block.level : block.type === 'code' ? '</>' : block.type === 'math' ? '∑' : block.type === 'list' ? '≡' : '·'}</span><span>{block.label || '空白 Mark'}</span></button>)}</div>
   }
   function treeNodes(nodes: FileEntry[], depth = 0, inArchive = false) {
     return nodes.filter(node => inArchive || treeMode === 'files' || node.directory).map(node => {
-      const current = !doc?.untitledId && doc?.file.path === node.path
       return <div className="tree-node" key={node.path}>
         <div className="tree-node-row"><button disabled={busy || navigating} className={'tree-item ' + (selected === node.path ? 'selected ' : '') + (dropTarget === node.path ? 'drop-target' : '')} style={{ paddingLeft: 12 + depth * 16 }}
           draggable={!busy && !navigating} onDragStart={event => { event.stopPropagation(); event.dataTransfer.setData('application/x-oopsmd-path', JSON.stringify({ root: libraryRootRef.current, path: node.path })); event.dataTransfer.effectAllowed = 'move'; setContextMenu(null) }} onDragEnd={() => setDropTarget(null)}
@@ -742,7 +862,6 @@ export default function App() {
           <Icon name={node.directory ? (expanded.has(node.path) ? 'chevronDown' : 'chevronRight') : node.name.endsWith('.tex') ? 'math' : 'file'} />{node.directory && <Icon name={expanded.has(node.path) ? 'folderOpen' : 'folder'} />}<span>{node.name}</span>
         </button></div>
         {node.directory && expanded.has(node.path) && treeNodes(node.children ?? [], depth + 1, inArchive)}
-        {current && treeMode === 'files' && doc.mode === 'markdown' && blockNodes(depth)}
       </div>
     })
   }
@@ -754,36 +873,66 @@ export default function App() {
       } else await loadDocument(path, anchor)
     })
   }
+  const handleEditorChange = useLatestEvent((content: string) => { editedRef.current = true; setDoc(current => current ? { ...current, content } : null); setStatus(docRef.current?.untitledId ? '草稿自动保留在本机' : '未保存') })
+  const handleComposition = useLatestEvent((active: boolean) => { composingRef.current = active; setComposing(active) })
+  const handleEditorSave = useLatestEvent(() => { void save() })
+  const handlePosition = useLatestEvent((position: { cursor: number; scroll: number }) => { positionRef.current = position })
+  const handleEditorNavigate = useLatestEvent(followLink)
+  const handleExternal = useLatestEvent((url: string) => { void run(() => api.openExternal(url)) })
+  useLayoutEffect(() => {
+    if (!newMenu) return
+    const position = () => {
+      const host = newMenuHost.current, menu = host?.querySelector<HTMLElement>('.new-document-menu')
+      if (!host || !menu) return
+      const bounds = host.getBoundingClientRect()
+      menu.style.left = `${Math.max(12, Math.min(bounds.left, window.innerWidth - menu.offsetWidth - 12))}px`
+      menu.style.top = `${bounds.bottom + 6}px`
+    }
+    position(); window.addEventListener('resize', position)
+    newMenuHost.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
+    const dismiss = (event: PointerEvent) => { if (!newMenuHost.current?.contains(event.target as Node)) setNewMenu(false) }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { setNewMenu(false); newMenuHost.current?.querySelector<HTMLButtonElement>('.tab-new')?.focus() } }
+    document.addEventListener('pointerdown', dismiss, true); document.addEventListener('keydown', escape)
+    return () => { window.removeEventListener('resize', position); document.removeEventListener('pointerdown', dismiss, true); document.removeEventListener('keydown', escape) }
+  }, [newMenu])
   const editorProps = doc ? {
-    readOnly: navigating, documentKey: doc.editorKey ?? library?.root + '/' + doc.file.path, value: doc.content, mode: doc.mode, theme: settings.theme,
+    readOnly: navigating, documentKey: doc.editorKey ?? library?.root + '/' + doc.file.path, value: doc.content, mode: doc.mode, theme: resolvedTheme,
     fontSize: settings.fontSize, fontFamily: documentFont, lineHeight: settings.lineHeight,
     initialPosition: tabPositions.current.get(doc.tabId!) ?? (doc.untitledId ? undefined : settings.positions[library?.root + '/' + doc.file.path]),
-    onChange: (content: string) => { editedRef.current = true; setDoc(current => current ? { ...current, content } : null); setStatus(docRef.current?.untitledId ? '草稿自动保留在本机' : '未保存') },
-    onComposition: (active: boolean) => { composingRef.current = active; setComposing(active) }, onSave: () => void save(),
-    onPosition: (position: { cursor: number; scroll: number }) => { positionRef.current = position },
+    onChange: handleEditorChange, onComposition: handleComposition, onSave: handleEditorSave,
+    onPosition: handlePosition,
     onMarkSelection: receiveMarkSelection,
-    onError: (message: string) => setNotice(message),
+    onError: setNotice,
   } : null
   const formatItems = [{ command: 'bold', label: '加粗', icon: 'bold' }, { command: 'underline', label: '下划线', icon: 'underline' }, { command: 'strike', label: '删除线', icon: 'strikethrough' }, { command: 'italic', label: '斜体', icon: 'italic' }, { command: 'superscript', label: '上标', icon: 'superscript' }, { command: 'subscript', label: '下标', icon: 'subscript' }, { command: 'highlight', label: '荧光笔', icon: 'highlight' }] as const
-  const formatButtons = () => formatItems.map(item => <button key={item.command} title={item.label} aria-label={item.label} disabled={doc?.mode === 'latex-math'} onMouseDown={event => event.preventDefault()} onClick={() => { activeEditor()?.format(item.command); setFormatMenu(false) }}><Icon name={item.icon} /></button>)
+  const formatButtons = (inMenu = false) => formatItems.map(item => <button key={item.command} role={inMenu ? 'menuitem' : undefined} tabIndex={inMenu ? -1 : undefined} title={item.label} aria-label={item.label} disabled={doc?.mode === 'latex-math'} onMouseDown={event => event.preventDefault()} onClick={() => { activeEditor()?.format?.(item.command); setFormatMenu(false) }}><Icon name={item.icon} /></button>)
   const lastProject = settings.projects.find((project) => project.root === settings.lastProject) ?? settings.projects[0]
 
-  if (!api) return <div className="browser-notice"><h1>OopsMD</h1><p>文件与 Git 功能需要桌面主进程。</p><p>请在项目目录运行 <code>npm run dev</code> 打开 Electron 窗口。</p></div>
-  return <div className="app" data-mode={doc?.mode ?? 'markdown'} onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
+  if (!api) return <div className="browser-notice"><h1>MarkFlow</h1><p>文件与 Git 功能需要桌面主进程。</p><p>请在项目目录运行 <code>npm run dev</code> 打开 Electron 窗口。</p></div>
+  return <div ref={rootRef} className="app" data-mode={doc?.mode ?? 'markdown'} data-platform={api.platform} data-sidebar={sidebar ? 'open' : 'closed'} onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
     event.preventDefault(); const file = event.dataTransfer.files[0]
     if (file) void run(() => navigate(async () => { const result = await api.openDropped(file); if (result) await adoptLibrary(result.library, result.path) }))
   }}>
     <header className="window-drag">
-      {sidebar && <div className="window-sidebar-space" />}
+      <div className="titlebar-navigation"><button className="icon-button" title={sidebar ? '收起侧栏' : '展开侧栏'} aria-label="收起 / 展开侧栏" aria-expanded={sidebar} onClick={() => transitionLayout(() => setSidebar(value => !value))}><Icon name="sidebar" /></button></div>
       <div className="tab-strip" style={{ '--pinned-count': tabs.filter(tab => tab.pinned).length } as CSSProperties} role="tablist" aria-label="文档标签">
-        {tabs.map((tab, index) => <div key={tab.id} style={{ '--pinned-index': index } as CSSProperties} className={`document-tab ${activeTab === tab.id ? 'active' : ''} ${tab.pinned ? 'tab-pinned' : ''}`} draggable={!busy && !navigating} onDragStart={event => { event.dataTransfer.setData('application/x-oopsmd-tab', tab.id); event.dataTransfer.effectAllowed = 'move' }} onDragOver={event => { if (event.dataTransfer.types.includes('application/x-oopsmd-tab')) { event.preventDefault(); event.stopPropagation() } }} onDrop={event => { const id = event.dataTransfer.getData('application/x-oopsmd-tab'); if (id) { event.preventDefault(); event.stopPropagation(); setTabs(reorderTabs(tabsRef.current, id, tab.id)) } }} onAuxClick={event => { if (event.button === 1) { event.preventDefault(); void run(() => closeTab(tab.id)) } }} onContextMenu={event => { event.preventDefault(); setTabMenu({ id: tab.id, x: Math.min(event.clientX, window.innerWidth - 225), y: event.clientY }) }}>
+        {tabs.map((tab, index) => <div key={tab.id} style={{ '--pinned-index': index } as CSSProperties} className={`document-tab ${activeTab === tab.id ? 'active' : ''} ${tab.pinned ? 'tab-pinned' : ''}`} draggable={!busy && !navigating} onDragStart={event => { event.dataTransfer.setData('application/x-oopsmd-tab', tab.id); event.dataTransfer.effectAllowed = 'move' }} onDragOver={event => { if (event.dataTransfer.types.includes('application/x-oopsmd-tab')) { event.preventDefault(); event.stopPropagation() } }} onDrop={event => { const id = event.dataTransfer.getData('application/x-oopsmd-tab'); if (id) { event.preventDefault(); event.stopPropagation(); setTabs(reorderTabs(tabsRef.current, id, tab.id)) } }} onAuxClick={event => { if (event.button === 1) { event.preventDefault(); void run(() => closeTab(tab.id)) } }} onContextMenu={event => { event.preventDefault(); openTabMenu(event.currentTarget, tab.id, event.clientX || undefined, event.clientY || undefined) }} onKeyDown={event => { if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) { event.preventDefault(); openTabMenu(event.currentTarget, tab.id) } }}>
           <button className="tab-select" role="tab" tabIndex={activeTab === tab.id ? 0 : -1} onKeyDown={event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); const at = tabs.findIndex(item => item.id === tab.id); const next = tabs[(at + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]; void run(() => switchTab(next.id)) } }} aria-selected={activeTab === tab.id} aria-label={tab.title} title={tab.untitledId ? tab.title + ' · 草稿' : tab.root + '/' + tab.path} onClick={() => void run(() => switchTab(tab.id))}><Icon name={tab.pinned ? 'pin' : tab.mode === 'latex-math' ? 'math' : 'file'} /><span className="tab-title">{tab.title}</span>{tab.dirty && <span className="tab-dirty" title="未保存" />}</button>
-          {!tab.pinned && <button className="tab-close" aria-label={`关闭标签 ${tab.title}`} title="关闭 Ctrl W" onClick={() => void run(() => closeTab(tab.id))}><Icon name="close" /></button>}
+          {!tab.pinned && <button className="tab-close" aria-label={`关闭标签 ${tab.title}`} title={`关闭 ${shortcut('W')}`} onClick={() => void run(() => closeTab(tab.id))}><Icon name="close" /></button>}
         </div>)}
-      </div><button className="tab-new icon-button" aria-label="新建标签" title="新建文档 Ctrl T" disabled={initializing || busy} onClick={() => void run(newDocument)}><Icon name="plus" /></button>
+      </div><div className="new-document-control" ref={newMenuHost}>
+        <button className="tab-new icon-button" aria-label="新建标签" aria-haspopup="menu" aria-expanded={newMenu} title={`新建文档 ${shortcut('T')}`} disabled={initializing || busy || navigating} onClick={() => setNewMenu(value => !value)}><Icon name="plus" /></button>
+        {newMenu && <div className="new-document-menu" role="menu" aria-label="新建文档类型" onKeyDown={event => {
+          if (event.key === 'Tab') { setNewMenu(false); return }
+          if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+          event.preventDefault(); const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')], index = items.indexOf(document.activeElement as HTMLButtonElement)
+          const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+          items[next]?.focus()
+        }}><span className="new-document-caption">新建</span>{registeredDocumentModules.map(module => <button key={module.id} role="menuitem" onClick={() => void run(() => newDocument(module.id))}><Icon name={module.id === 'latex-math' ? 'math' : 'file'} /><span><strong>{module.label}</strong><small>{module.id === 'latex-math' ? 'LaTeX 数学片段' : '笔记与长文写作'}</small></span><span className="document-extension">{module.defaultExtension}</span></button>)}</div>}
+      </div>
     </header>
     <div className="workspace">
-      {sidebar && <aside className="sidebar">
+      <div className="sidebar-shell" inert={!sidebar} aria-hidden={!sidebar}><aside className="sidebar">
         <div className="sidebar-heading"><span>项目</span><button className="icon-button" title="打开文件夹作为项目" aria-label="打开项目" disabled={initializing || busy} onClick={() => void run(() => choose('library'))}><Icon name="plus" /></button></div>
         <div className="project-list">{settings.projects.map((project) => <button key={project.root} className={`project-item ${library?.root === project.root ? 'active' : ''}`} title={project.root} aria-label={`打开项目 ${basename(project.root.replaceAll('\\', '/'))}`} disabled={busy} onClick={() => void run(() => openProject(project.root))}><Icon name={library?.root === project.root ? 'folderOpen' : 'folder'} /><span className="project-name">{basename(project.root.replaceAll('\\', '/'))}</span>{library?.root === project.root && <span className="project-current" />}</button>)}
           {!settings.projects.length && <button className="project-item muted" onClick={() => void run(() => choose('library'))}><Icon name="folderPlus" /><span>添加文件夹</span></button>}</div>
@@ -793,17 +942,16 @@ export default function App() {
           <div className={`tree-scroll ${treeMode === 'folders' ? 'folder-hierarchy' : ''}`}>{treeNodes(entries)}{!entries.length && <p className="muted inset">此目录还没有文件</p>}</div>
           {treeMode === 'folders' && <div className="folder-list"><div className="section-label">{folder || '根目录'} · {allFiles.filter(file => !file.directory && dirname(file.path) === folder).length} 个文件</div>{treeNodes(allFiles.filter(file => !file.directory && dirname(file.path) === folder), 0, true)}</div>}
           <div className="archive-section"><button className="archive-toggle" aria-expanded={showArchive} onClick={() => setShowArchive(!showArchive)}><Icon name="archive" /><span>归档</span><Icon name={showArchive ? 'chevronDown' : 'chevronRight'} /></button>{showArchive && <div className="archive-tree" aria-label="归档树">{treeNodes(archivedEntries, 0, true)}{!archivedEntries.length && <p className="muted inset">归档的资料会保留在这里</p>}</div>}</div></div>
-          : <div className="project-files empty-project-hint"><p>首次保存时，选择一个文件夹作为项目。</p></div>}
-        {doc && (doc.untitledId || treeMode === 'folders') && <div className="document-blocks"><div className="section-label">当前文档 · Mark 大纲</div>{blockNodes()}</div>}
+          : <div className="project-files empty-project-hint"><p>保存文档时选择项目文件夹。</p></div>}
         <div className="sidebar-footer"><button aria-pressed={panel === 'settings'} onClick={() => setPanel(panel === 'settings' ? 'none' : 'settings')}><Icon name="settings" />设置</button><button disabled={!library} aria-pressed={panel === 'git'} onClick={() => void run(async () => { await refreshGit(); setPanel(panel === 'git' ? 'none' : 'git') })}><Icon name="gitBranch" />Git 与同步</button></div>
-      </aside>}
+      </aside></div>
       <main className="main">
-        <div className="document-bar"><button className="icon-button" title="收起 / 展开侧栏" aria-label="收起 / 展开侧栏" onClick={() => setSidebar(!sidebar)}><Icon name="sidebar" /></button><span className="document-project title-path" title={library?.root}>{library ? basename(library.root.replaceAll('\\', '/')) : '本地工作区'}</span><span className="breadcrumb-separator">/</span><span className="document-name">{doc ? basename(doc.file.path) : '项目'}</span>{dirty && <span className="unsaved-dot" title="未保存" />}{doc?.untitledId && <span className="document-state">草稿</span>}{doc && !doc.untitledId && archiveOwner(archives, doc.file.path) && <span className="document-state">已归档</span>}<span className="document-spacer" />
+        <div className="document-bar"><span className="document-project title-path" title={library?.root}>{library ? basename(library.root.replaceAll('\\', '/')) : '本地工作区'}</span><span className="breadcrumb-separator">/</span><span className="document-name">{doc ? basename(doc.file.path) : '项目'}</span>{dirty && <span className="unsaved-dot" title="未保存" />}{doc?.untitledId && <span className="document-state">草稿</span>}{doc && !doc.untitledId && archiveOwner(archives, doc.file.path) && <span className="document-state">已归档</span>}<span className="document-spacer" />{doc && <span className="document-type" title={documentModule.label + '文档'}><Icon name={doc.mode === 'latex-math' ? 'math' : 'file'} />{documentModule.label}</span>}
           <button className="icon-button" title="打开文件" aria-label="打开文件" onClick={() => void run(() => choose('file'))}><Icon name="folderOpen" /></button>
-          <button className="icon-button" title={settings.theme === 'light' ? '切换深色' : '切换浅色'} aria-label="切换主题" onClick={() => void run(() => updateSettings({ theme: settings.theme === 'light' ? 'dark' : 'light' }))}><Icon name={settings.theme === 'light' ? 'moon' : 'sun'} /></button>
-          {doc && <><button className="icon-button" title="版本历史" aria-label="版本历史" disabled={busy || !!doc.untitledId} onClick={() => void run(showHistory)}><Icon name="history" /></button><button className="primary" disabled={busy} onClick={() => void save()}><Icon name="save" />保存 <kbd>Ctrl S</kbd></button></>}
+          <ThemePicker preference={settings.theme} resolved={resolvedTheme} onChange={theme => void run(() => updateSettings({ theme }))} />
+          {doc && <><button className="icon-button" title="版本历史" aria-label="版本历史" disabled={busy || !!doc.untitledId} onClick={() => void run(showHistory)}><Icon name="history" /></button><button className="primary" disabled={busy} onClick={() => void save()}><Icon name="save" />保存 <kbd>{shortcut('S')}</kbd></button></>}
         </div>
-        {notice && <div className="notice" role="alert"><span>{notice}</span><button aria-label="关闭提示" onClick={() => setNotice('')}>×</button></div>}
+        {notice && <div className="notice" role="alert"><span>{notice}</span><button aria-label="关闭提示" onClick={() => setNotice('')}><Icon name="close" /></button></div>}
         {external && <div className="conflict"><strong>检测到外部修改</strong><span>你的编辑和磁盘内容均已保留。</span><button onClick={() => void run(() => api.exportCopy(external.content))}>导出磁盘副本</button><button onClick={() => void run(async () => { if (!(await api.exportCopy(docRef.current!.content))) return; setDoc((current) => current ? { ...current, file: external, content: normalize(external.content), cleanContent: undefined } : null); setPreview(docRef.current?.content ?? ''); setExternal(null); await persistDraft() })}>备份编辑并载入磁盘</button><button onClick={() => void run(async () => { if (!(await api.exportCopy(external.content))) return; setDoc((current) => current ? { ...current, file: external, cleanContent: normalize(external.content) } : null); setExternal(null); await persistDraft(); setNotice('磁盘副本已导出。当前编辑尚未写盘，请手动保存。') })}>备份磁盘并保留编辑</button></div>}
         {!doc ? <section className="startup">
           {initializing ? <p className="muted">正在打开工作区…</p> : <>
@@ -813,38 +961,48 @@ export default function App() {
             {startup && untitled.length > 0 && <button className="resume-draft" onClick={() => void run(() => openDraft(untitled[0]))}><Icon name="clock" />继续未保存文档<span>{draftTitle(untitled[0])}</span><Icon name="arrowRight" /></button>}
           </>}
         </section>
-          : <><div className="editor-toolbar"><div className="mode-capsule" aria-label="内容模式"><button title="Markdown" aria-label="Markdown" aria-pressed={doc.mode === 'markdown'} className={doc.mode === 'markdown' ? 'active' : ''} onClick={() => void run(() => setMode('markdown'))}>MD</button><button title="LaTeX 数学片段" aria-label="Geek" aria-pressed={doc.mode === 'latex-math'} className={doc.mode === 'latex-math' ? 'active' : ''} onClick={() => void run(() => setMode('latex-math'))}><Icon name="math" />Geek</button></div>
-            <div className="font-control" title={doc.mode === 'markdown' ? `当前 Mark：${activeMark?.label || '请选择正文'}` : 'Geek 默认排版'}>
-              {doc.mode === 'markdown' && <span className="font-scope">Mark</span>}
-              <select className="font-family-select" aria-label={doc.mode === 'markdown' ? 'Mark 字体' : '字体'} disabled={navigating || (doc.mode === 'markdown' && !activeMark)} value={toolbarFont} onChange={event => applyTypography({ fontFamily: event.target.value as Settings['fontFamily'] })}>{fonts.map(font => <option key={font.id} value={font.id} disabled={!font.available}>{font.name}{!font.available ? ' · 未安装' : ''}</option>)}</select>
-              <select className="font-size-select" aria-label={doc.mode === 'markdown' ? 'Mark 字号' : '字号'} disabled={navigating || (doc.mode === 'markdown' && !activeMark)} value={toolbarSize} onChange={event => applyTypography({ fontSize: +event.target.value })}>{toolbarSizes.map(size => <option key={size} value={size}>{size}</option>)}</select>
+          : <><div className="editor-toolbar">
+            <div className="font-control" title={doc.mode === 'markdown' ? `当前 Mark：${activeMark?.label || '请选择正文'}` : 'Formula 默认排版'}>
+              {doc.mode === 'markdown' && <span className="font-scope" title="字体和字号仅应用到光标所在的内容块（Mark）">块样式</span>}
+              <SelectControl className="font-family-select" aria-label={doc.mode === 'markdown' ? 'Mark 字体' : '字体'} disabled={navigating || (doc.mode === 'markdown' && !activeMark)} value={toolbarFont} onChange={event => applyTypography({ fontFamily: event.target.value as Settings['fontFamily'] })}>{fonts.map(font => <option key={font.id} value={font.id} disabled={!font.available}>{font.name}{!font.available ? ' · 未安装' : ''}</option>)}</SelectControl>
+              <SelectControl className="font-size-select" aria-label={doc.mode === 'markdown' ? 'Mark 字号' : '字号'} disabled={navigating || (doc.mode === 'markdown' && !activeMark)} value={toolbarSize} onChange={event => applyTypography({ fontSize: +event.target.value })}>{toolbarSizes.map(size => <option key={size} value={size}>{size}</option>)}</SelectControl>
               {doc.mode === 'markdown' && <button className="icon-button mark-style-reset" aria-label="恢复 Mark 默认样式" title="恢复默认字体和字号" disabled={navigating || !activeMark?.explicit} onMouseDown={event => event.preventDefault()} onClick={() => applyTypography(null)}><Icon name="reopen" /></button>}
             </div>
-            <div className="format-tools" aria-label="文字格式">{formatButtons()}</div><div className="format-overflow"><button className="icon-button" aria-label="更多排版" title="更多排版" aria-expanded={formatMenu} onMouseDown={event => event.preventDefault()} onClick={() => setFormatMenu(!formatMenu)}><Icon name="more" /></button>{formatMenu && <div className="format-menu" aria-label="文字格式">{formatButtons()}</div>}</div>
-            <div className={`toolbar-search ${query !== null ? 'search-open' : ''}`}><button className="icon-button" aria-label="查找" title="查找 Ctrl F" onClick={openSearch}><Icon name="search" /></button><input ref={searchInput} aria-label="页内查找" placeholder="搜索" value={query ?? ''} onFocus={() => setQuery(previous => previous ?? '')} onChange={event => { setQuery(event.target.value); search(event.target.value) }} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); search(query ?? '', event.shiftKey ? -1 : 1) } if (event.key === 'Escape') { setQuery(null); search(''); activeEditor()?.focus() } }} /><kbd>Ctrl F</kbd></div>
-            <div className="segmented layout-switch" aria-label="显示布局">{(doc.mode === 'latex-math' ? ['split', 'source'] as const : ['preview', 'source', 'split'] as const).map(layout => <button key={layout} aria-label={({ source: '源码', preview: '实时预览', split: '对照' })[layout]} title={({ source: '查看 Markdown 源码', preview: '实时排版与编辑', split: '源码与预览对照' })[layout]} aria-pressed={settings.layout === layout} className={settings.layout === layout ? 'active' : ''} onClick={() => void run(() => updateSettings({ layout }))}><Icon name={layout} />{({ source: '源码', preview: '实时预览', split: '对照' })[layout]}</button>)}</div></div>
-            {query !== null && query.length > 0 && <div className="find-bar"><span>{searchResult.count ? searchResult.index + ' / ' + searchResult.count : '没有匹配'}</span><button aria-label="上一个匹配" onClick={() => search(query, -1)}>上一个</button><button aria-label="下一个匹配" onClick={() => search(query)}>下一个</button><button aria-label="关闭查找" onClick={() => { setQuery(null); search('') }}>关闭</button></div>}
+            <div className="format-tools" aria-label="文字格式">{formatButtons()}</div><div ref={formatMenuHost} className="format-overflow" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFormatMenu(false) }}><button ref={formatMenuTrigger} className="icon-button" aria-label="更多排版" title="更多排版" aria-haspopup="menu" aria-expanded={formatMenu} onMouseDown={event => event.preventDefault()} onClick={() => { if (formatMenu) formatMenuTrigger.current?.focus({ preventScroll: true }); setFormatMenu(!formatMenu) }} onKeyDown={event => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setFormatMenu(true) } }}><Icon name="more" /></button>{formatMenu && <div className="format-menu" role="menu" aria-label="文字格式" onKeyDown={event => {
+              if (event.key === 'Tab') { formatMenuTrigger.current?.focus({ preventScroll: true }); setFormatMenu(false); return }
+              if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+              event.preventDefault()
+              const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')], index = items.indexOf(document.activeElement as HTMLButtonElement)
+              const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+              items[next]?.focus()
+            }}>{formatButtons(true)}</div>}</div>
+            <button className="toolbar-search" aria-label="查找" aria-expanded={query !== null} aria-controls={query !== null ? 'document-find' : undefined} title={`查找 ${shortcut('F')}`} onClick={openSearch}><Icon name="search" /><span>搜索</span><kbd>{shortcut('F')}</kbd></button>
+            <div className="segmented layout-switch" aria-label="显示布局">{documentModule.layouts.map(layout => <button key={layout} aria-label={({ source: '源码', preview: '实时预览', split: '对照' })[layout]} title={({ source: '查看源码', preview: '实时排版与编辑', split: '源码与预览对照' })[layout]} aria-pressed={settings.layout === layout} className={settings.layout === layout ? 'active' : ''} onClick={() => void run(() => updateSettings({ layout }))}><Icon name={layout} />{({ source: '源码', preview: '实时预览', split: '对照' })[layout]}</button>)}</div></div>
+            {query !== null && <div className="find-bar" id="document-find" role="search" aria-label="文档内查找"><div className="find-input"><Icon name="search" /><input ref={searchInput} aria-label="页内查找" placeholder="在文档中查找" value={query} onChange={event => { setQuery(event.target.value); if (!(event.nativeEvent as InputEvent).isComposing) search(event.target.value) }} onCompositionEnd={event => search(event.currentTarget.value)} onKeyDown={event => { if (event.nativeEvent.isComposing || event.keyCode === 229) return; if (event.key === 'Enter') { event.preventDefault(); search(query, event.shiftKey ? -1 : 1) } if (event.key === 'Escape') { event.preventDefault(); setQuery(null); search(''); activeEditor()?.focus() } }} /></div><span className="find-count" aria-live="polite">{query ? searchResult.count ? searchResult.index + ' / ' + searchResult.count : '没有匹配' : ''}</span><button className="icon-button" aria-label="上一个匹配" title="上一个匹配 Shift Enter" disabled={!query || !searchResult.count} onClick={() => search(query, -1)}><Icon name="arrowUp" /></button><button className="icon-button" aria-label="下一个匹配" title="下一个匹配 Enter" disabled={!query || !searchResult.count} onClick={() => search(query)}><Icon name="arrowDown" /></button><button className="icon-button" aria-label="关闭查找" title="关闭查找 Esc" onClick={() => { setQuery(null); search(''); activeEditor()?.focus() }}><Icon name="close" /></button></div>}
+            <div className="document-surface" ref={documentSurface}>
             <div className={`editor-area layout-${settings.layout} ${doc.mode === 'latex-math' && settings.layout === 'preview' ? 'math-live' : ''}`} style={{ '--document-font': documentFont, '--split': `${split}%`, '--font-size': `${settings.fontSize}px`, '--line-height': settings.lineHeight, '--line-width': `${settings.lineWidth}px` } as CSSProperties}>
-              <section className={settings.layout === 'preview' && doc.mode === 'markdown' ? 'live-pane' : 'source-pane'} aria-label={settings.layout === 'preview' && doc.mode === 'markdown' ? '实时编辑器' : '源码编辑器'}><BlockEditor ref={blockEditor} {...editorProps!} live={settings.layout === 'preview'} path={doc.file.path} localFiles={!doc.untitledId} onNavigate={followLink} onExternal={url => void run(() => api.openExternal(url))} /></section>
+              <section className={settings.layout === 'preview' && doc.mode === 'markdown' ? 'live-pane' : 'source-pane'} aria-label={settings.layout === 'preview' && doc.mode === 'markdown' ? '实时编辑器' : '源码编辑器'}><DocumentEditor ref={blockEditor} {...editorProps!} live={settings.layout === 'preview'} path={doc.file.path} localFiles={!doc.untitledId} onNavigate={handleEditorNavigate} onExternal={handleExternal} onHeadingSelection={receiveHeadingSelection} /></section>
               {settings.layout === 'split' && <div className="splitter" role="separator" aria-label="调整分屏比例" aria-orientation="vertical" aria-valuenow={split} tabIndex={0} onKeyDown={(event) => { if (event.key === 'ArrowLeft') setSplit(Math.max(20, split - 2)); if (event.key === 'ArrowRight') setSplit(Math.min(80, split + 2)) }} onPointerDown={(event) => { const target = event.currentTarget; const bounds = target.parentElement!.getBoundingClientRect(); target.setPointerCapture(event.pointerId); const move = (e: PointerEvent) => setSplit(Math.max(20, Math.min(80, (e.clientX - bounds.left) / bounds.width * 100))); const end = () => { target.removeEventListener('pointermove', move); target.removeEventListener('pointerup', end) }; target.addEventListener('pointermove', move); target.addEventListener('pointerup', end) }} />}
-              {settings.layout === 'split' && <section className="preview-pane" aria-label="文档预览" ref={previewEl} onScroll={event => { previewScrollRef.current = event.currentTarget.scrollTop }}>{!preview ? <div className="empty-preview"><Icon name="preview" size={24} /><span>实时预览</span><p>写下内容，排版会出现在这里。</p></div> : <Preview content={preview} mode={doc.mode} path={doc.file.path} localFiles={!doc.untitledId} onNavigate={followLink} onExternal={url => void run(() => api.openExternal(url))} />}</section>}
+              {settings.layout === 'split' && <section className="preview-pane" aria-label="文档预览" ref={previewEl} onScroll={event => { previewScrollRef.current = event.currentTarget.scrollTop }}>{!preview ? <div className="empty-preview"><Icon name="preview" size={24} /><span>实时预览</span><p>写下内容，排版会出现在这里。</p></div> : <DocumentPreview content={preview} mode={doc.mode} path={doc.file.path} localFiles={!doc.untitledId} onNavigate={handleEditorNavigate} onExternal={handleExternal} />}</section>}
             </div>
-            {settings.layout !== 'preview' && doc.mode === 'markdown' && headings.length > 0 && <div className="outline-inline"><span>大纲</span><select disabled={preview !== doc.content} aria-label="跳转标题" value="" onChange={(event) => { const heading = headings.find((item) => item.id === event.target.value); if (heading) { activeEditor()?.jumpTo(heading.line); jumpToAnchor(heading.id) } }}><option value="">选择标题…</option>{headings.map((heading) => <option key={heading.id} value={heading.id}>{'　'.repeat(heading.level - 1)}{heading.text}</option>)}</select><button onClick={() => void run(() => api.exportCopy(doc.content))}>导出副本</button></div>}
+
+              {panel === 'none' && documentModule.capabilities.outline && <DocumentNavigation documentKey={doc.editorKey!} layout={settings.layout} headings={headings} activeId={activeHeadingId} disabled={busy || navigating || preview !== doc.content} pinned={navigationPinned} onPinnedChange={value => { transitionLayout(() => setNavigationPinned(value)); localStorage.setItem('oopsmd.navigation.pinned', String(value)) }} onNavigate={heading => { activeEditor()?.jumpTo(heading.line); jumpToAnchor(heading.id) }} blockContent={documentModule.capabilities.blockFormatting ? blockNodes() : undefined} />}
+            </div>
           </>}
         <footer className="statusbar"><span className={`status-light ${busy ? 'working' : dirty ? 'dirty' : ''}`} /><span>{status}</span><span className="status-spacer" /><span>{doc ? `净修改 ${count} / ${settings.threshold}` : 'UTF-8'}</span><button disabled={!library || busy} onClick={() => void run(sync)}>{git?.repository ? `↑ ${git.ahead} ↓ ${git.behind}　同步` : '未启用 Git'}</button></footer>
       </main>
-      {panel !== 'none' && <aside className="panel"><div className="panel-heading"><h2>{{ settings: '阅读与保存', git: 'Git 与同步', history: '文档版本' }[panel]}</h2><button aria-label="关闭面板" onClick={() => setPanel('none')}>×</button></div>
+      {panel !== 'none' && <aside ref={panelRef} className="panel" aria-label={{ settings: '阅读与保存', git: 'Git 与同步', history: '文档版本' }[panel]} onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); closePanel() } }}><div className="panel-heading"><h2>{{ settings: '阅读与保存', git: 'Git 与同步', history: '文档版本' }[panel]}</h2><button className="icon-button" aria-label="关闭面板" title="关闭面板 Esc" onClick={closePanel}><Icon name="close" /></button></div>
         {panel === 'settings' && <div className="panel-content">
-          <label className="field">主题<select value={settings.theme} onChange={(event) => void run(() => updateSettings({ theme: event.target.value as Settings['theme'] }))}><option value="light">浅色</option><option value="dark">深色</option></select></label>
-          <label className="field">默认字体<select aria-label="默认字体" value={settings.fontFamily} onChange={event => void run(() => updateSettings({ fontFamily: event.target.value as Settings['fontFamily'] }))}>{fonts.map(font => <option key={font.id} value={font.id} disabled={!font.available}>{font.name}{!font.available ? ' · 未安装' : ''}</option>)}</select></label>
+          <section className="settings-section"><h3>外观</h3><label className="field">主题<SelectControl aria-label="主题" value={settings.theme} onChange={(event) => void run(() => updateSettings({ theme: event.target.value as Settings['theme'] }))}><option value="system">跟随本机</option><option value="light">浅色</option><option value="dark">深色</option></SelectControl></label></section><section className="settings-section"><h3>阅读</h3>
+          <label className="field">默认字体<SelectControl aria-label="默认字体" value={settings.fontFamily} onChange={event => void run(() => updateSettings({ fontFamily: event.target.value as Settings['fontFamily'] }))}>{fonts.map(font => <option key={font.id} value={font.id} disabled={!font.available}>{font.name}{!font.available ? ' · 未安装' : ''}</option>)}</SelectControl></label>
           <label className="field">默认字号 · {settings.fontSize}px<input aria-label="默认字号" type="range" min="12" max="28" value={settings.fontSize} onChange={(event) => void run(() => updateSettings({ fontSize: +event.target.value }))} /></label>
-          <p className="muted">默认字体和字号用于未单独排版的 Mark 与 Geek。工具栏中的 Mark 排版只修改当前 Mark。</p>
+          <p className="muted">应用于未单独设置样式的内容。选中内容块后，可在工具栏单独调整。</p>
           <label className="field">行距 · {settings.lineHeight}<input type="range" min="1.2" max="2.5" step="0.1" value={settings.lineHeight} onChange={(event) => void run(() => updateSettings({ lineHeight: +event.target.value }))} /></label>
           <label className="field">阅读宽度 · {settings.lineWidth}px<input type="range" min="480" max="1200" step="20" value={settings.lineWidth} onChange={(event) => void run(() => updateSettings({ lineWidth: +event.target.value }))} /></label>
-          <hr /><label className="check"><input type="checkbox" checked={settings.autoCommit} onChange={(event) => void run(() => updateSettings({ autoCommit: event.target.checked }))} />字符阈值自动记录版本</label>
-          <label className="field">有效修改量阈值<input type="number" min="1" step="1" defaultValue={settings.threshold} key={settings.threshold} onBlur={(event) => void run(() => updateSettings({ threshold: Number(event.target.value) }))} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }} /></label>
+          </section><section className="settings-section"><h3>版本记录</h3><label className="check"><input type="checkbox" checked={settings.autoCommit} onChange={(event) => void run(() => updateSettings({ autoCommit: event.target.checked }))} />字符阈值自动记录版本</label>
+          <ThresholdField value={settings.threshold} onCommit={threshold => updateSettings({ threshold })} />
           <p className="muted">按用户可见字符计算净修改。输入法确认后判断，撤销回到版本基线时归零。草稿独立保存在此设备。</p>
-          <p className="muted">Ctrl+S 保存当前文档；启用 Git 后同时记录本地版本。同步需要手动触发。</p>
+          <p className="muted">{shortcut('S')} 保存当前文档；启用 Git 后同时记录本地版本。同步需要手动触发。</p></section>
         </div>}
         {panel === 'history' && <div className="panel-content">{!history.length && <p className="muted">该文档尚无本地版本。</p>}{history.map((entry) => <button className="history-item" key={entry.oid} onClick={() => void run(() => restoreVersion(entry))}><strong>{entry.subject}</strong><span>{new Date(entry.date).toLocaleString()}</span><code>{entry.oid.slice(0, 10)}</code><small>载入此版本 →</small></button>)}</div>}
         {panel === 'git' && <div className="panel-content">
@@ -868,14 +1026,21 @@ export default function App() {
         </div>}
       </aside>}
     </div>
-    {tabMenu && <div className="context-menu tab-context-menu" role="menu" aria-label="标签操作" style={{ left: tabMenu.x, top: tabMenu.y }}>
+    {tabMenu && <div ref={tabMenuEl} className="context-menu tab-context-menu" role="menu" aria-label="标签操作" style={{ left: tabMenu.x, top: tabMenu.y }} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setTabMenu(null) }} onKeyDown={event => {
+      if (event.key === 'Tab') { if (tabMenuSource.current?.isConnected) tabMenuSource.current.focus({ preventScroll: true }); setTabMenu(null); return }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+      event.preventDefault()
+      const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')], index = items.indexOf(document.activeElement as HTMLButtonElement)
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+      items[next]?.focus()
+    }}>
       <button role="menuitem" onClick={() => { setTabs(orderTabs(tabsRef.current.map(tab => tab.id === tabMenu.id ? { ...tab, pinned: !tab.pinned } : tab))); setTabMenu(null) }}><Icon name="pin" />{tabs.find(tab => tab.id === tabMenu.id)?.pinned ? '取消固定标签' : '固定标签'}</button>
-      <button role="menuitem" onClick={() => void run(() => closeTab(tabMenu.id))}>关闭标签<kbd>Ctrl W</kbd></button>
+      <button role="menuitem" onClick={() => void run(() => closeTab(tabMenu.id))}>关闭标签<kbd>{shortcut('W')}</kbd></button>
       <button role="menuitem" onClick={() => { const id = tabMenu.id; setTabMenu(null); void run(() => closeOtherTabs(id, false)) }}>关闭其他标签</button>
       <button role="menuitem" onClick={() => { const id = tabMenu.id; setTabMenu(null); void run(() => closeOtherTabs(id, true)) }}>关闭右侧标签</button>
       <hr /><button role="menuitem" disabled={!closedTabs.length} onClick={() => { setTabMenu(null); void run(reopenTab) }}><Icon name="reopen" />重新打开关闭的标签</button>
     </div>}
-    {markMenu && <div className="context-menu mark-context-menu" role="menu" aria-label="Mark 操作" ref={markMenuEl} style={{ left: markMenu.x, top: markMenu.y }} onKeyDown={event => {
+    {markMenu && <div className="context-menu mark-context-menu" data-navigation-document-key={doc?.editorKey} role="menu" aria-label="Mark 操作" ref={markMenuEl} style={{ left: markMenu.x, top: markMenu.y }} onKeyDown={event => {
       const items = Array.from(markMenuEl.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])
       const at = items.indexOf(document.activeElement as HTMLButtonElement)
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); items[(at + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus() }
@@ -896,6 +1061,6 @@ export default function App() {
       <button className="danger" role="menuitem" disabled={busy || navigating} onClick={() => void run(() => mutate('remove', contextMenu.path))}><Icon name="trash" />移到回收站</button>
     </div>}
     {navigating && <div className="navigation-shield"><span>正在切换文档状态…</span></div>}
-    {question && <div className="modal-backdrop"><form className="modal" role="dialog" aria-modal="true" aria-label={question.title} onKeyDown={(event) => { if (event.key === 'Escape') { const q = question; setQuestion(null); q.resolve(null) } }} onSubmit={(event) => { event.preventDefault(); const q = question; setQuestion(null); q.resolve(q.initial !== undefined ? answer : q.buttons[0]) }}><h2>{question.title}</h2><p>{question.detail}</p>{question.initial !== undefined && <input autoFocus value={answer} onChange={(event) => setAnswer(event.target.value)} aria-label={question.title} />}<div className="modal-buttons">{question.buttons.map((label, index) => <button autoFocus={index === 0 && question.initial === undefined} key={label} type={index === 0 ? 'submit' : 'button'} className={index === 0 ? 'primary' : ''} onClick={index === 0 ? undefined : () => { const q = question; setQuestion(null); q.resolve(label === '取消' ? null : label) }}>{label}</button>)}</div></form></div>}
+    {question && <QuestionDialog key={question.id} title={question.title} detail={question.detail} initial={question.initial} buttons={question.buttons} onAnswer={answer => { const q = question; questionRef.current = null; setQuestion(null); q.resolve(answer) }} />}
   </div>
 }

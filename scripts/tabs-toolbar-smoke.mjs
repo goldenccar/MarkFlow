@@ -1,3 +1,4 @@
+import { showBlockInspector } from './ui-test-utils.mjs'
 import { _electron as electron, expect } from '@playwright/test'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
@@ -14,8 +15,8 @@ const originals = { 'Alpha.md': '# Alpha\n\nAlpha original.\n', 'Bravo.md': '# B
 await Promise.all(Object.entries(originals).map(([name, content]) => writeFile(path.join(library, name), content)))
 const gitBin = process.env.OOPSMD_SMOKE_EXE ? path.join(path.dirname(process.env.OOPSMD_SMOKE_EXE), 'resources', 'git', 'cmd', 'git.exe') : 'git'
 const git = (...args) => execFileSync(gitBin, args, { cwd: library, encoding: 'utf8', windowsHide: true }).trim()
-git('init', '-b', 'main'); git('config', 'user.name', 'OopsMD Tabs Test'); git('config', 'user.email', 'test@example.invalid'); git('add', '.'); git('commit', '-m', 'baseline')
-const env = { ...process.env, OOPSMD_USER_DATA: path.join(temporary, 'profile') }
+git('init', '-b', 'main'); git('config', 'user.name', 'MarkFlow Tabs Test'); git('config', 'user.email', 'test@example.invalid'); git('add', '.'); git('commit', '-m', 'baseline')
+const env = { ...process.env, MARKFLOW_USER_DATA: path.join(temporary, 'profile') }
 delete env.ELECTRON_RUN_AS_NODE
 const checks = [], errors = [], screenshots = []
 let app, page
@@ -47,8 +48,8 @@ async function resize(width, height) {
 async function capture(name) { const file = path.join(temporary, `${name}.png`); await page.screenshot({ path: file, animations: 'disabled' }); screenshots.push(file) }
 async function sourceMode() { await page.getByRole('button', { name: '源码', exact: true }).click(); await expect(source()).toBeVisible() }
 async function activate(name) { await tab(name).click(); await expect(tab(name)).toHaveAttribute('aria-selected', 'true'); await expect(page.locator('.navigation-shield')).toHaveCount(0) }
-async function append(text) { await source().click(); await page.keyboard.press('Control+End'); await page.keyboard.insertText(text) }
-async function save() { const button = page.locator('.document-bar').getByRole('button', { name: /^保存(?: Ctrl S)?$/ }); await button.click(); await expect(page.locator('.unsaved-dot')).toHaveCount(0); await expect(button).toBeEnabled() }
+async function append(text) { await source().click(); await page.keyboard.press('ControlOrMeta+End'); await page.keyboard.insertText(text) }
+async function save() { const button = page.locator('.document-bar').getByRole('button', { name: /^保存(?: (?:Ctrl|⌘) S)?$/ }); await button.click(); await expect(page.locator('.unsaved-dot')).toHaveCount(0); await expect(button).toBeEnabled() }
 async function menu(name, action) { await tab(name).click({ button: 'right' }); await expect(page.getByRole('menu', { name: '标签操作' })).toBeVisible(); await page.getByRole('menuitem', { name: action, exact: true }).click() }
 async function noOverflow() {
   const failures = await page.evaluate(() => ['.document-bar', '.editor-toolbar', '.statusbar'].flatMap(selector => {
@@ -77,11 +78,11 @@ try {
   await expect(page.locator('.draft-list, .draft-item')).toHaveCount(0)
   const chrome = await page.evaluate(() => {
     const header = document.querySelector('.window-drag'), sidebar = document.querySelector('.sidebar'), strip = document.querySelector('.tab-strip'), add = document.querySelector('.tab-new')
-    return { height: header.getBoundingClientRect().height, padding: parseFloat(getComputedStyle(header).paddingRight), sidebarRight: sidebar.getBoundingClientRect().right, tabsLeft: strip.getBoundingClientRect().left, addRight: add.getBoundingClientRect().right, width: innerWidth, drag: getComputedStyle(header).getPropertyValue('-webkit-app-region'), tabDrag: getComputedStyle(strip).getPropertyValue('-webkit-app-region') }
+    return { height: header.getBoundingClientRect().height, padding: parseFloat(getComputedStyle(header).paddingRight), platform: document.querySelector('.app').dataset.platform, sidebarRight: sidebar.getBoundingClientRect().right, tabsLeft: strip.getBoundingClientRect().left, tabsMargin: parseFloat(getComputedStyle(strip).marginLeft), addRight: add.getBoundingClientRect().right, width: innerWidth, drag: getComputedStyle(header).getPropertyValue('-webkit-app-region'), tabDrag: getComputedStyle(strip).getPropertyValue('-webkit-app-region') }
   })
-  expect(chrome.height).toBe(40); expect(chrome.padding).toBeGreaterThanOrEqual(140)
-  expect(Math.abs(chrome.tabsLeft - chrome.sidebarRight)).toBeLessThanOrEqual(1)
-  expect(chrome.addRight).toBeLessThanOrEqual(chrome.width - 140)
+  expect(chrome.height).toBe(40); expect(chrome.padding).toBeGreaterThanOrEqual(chrome.platform === 'darwin' ? 12 : 140)
+  expect(Math.abs(chrome.tabsLeft - chrome.sidebarRight - chrome.tabsMargin)).toBeLessThanOrEqual(1)
+  expect(chrome.addRight).toBeLessThanOrEqual(chrome.width - chrome.padding)
   expect(chrome.drag).toBe('drag'); expect(chrome.tabDrag).toBe('no-drag')
   passed('40px draggable titlebar aligns with the sidebar and reserves native caption buttons')
 
@@ -91,8 +92,8 @@ try {
   await expect(tabRow('Alpha.md').locator('.tab-dirty')).toBeVisible()
   await tree('Bravo.md').click(); await sourceMode(); await append('BRAVO_EDIT')
   await activate('Alpha.md'); await expect(page.locator('.editor-area')).toHaveClass(/layout-source/); await expect(source()).toContainText('ALPHA_EDIT')
-  await source().click(); await page.keyboard.press('Control+z'); await expect(source()).not.toContainText('ALPHA_EDIT')
-  await page.keyboard.press('Control+Shift+Z'); await expect(source()).toContainText('ALPHA_EDIT'); await save()
+  await source().click(); await page.keyboard.press('ControlOrMeta+z'); await expect(source()).not.toContainText('ALPHA_EDIT')
+  await page.keyboard.press('ControlOrMeta+Shift+Z'); await expect(source()).toContainText('ALPHA_EDIT'); await save()
   const savedAlpha = await readFile(path.join(library, 'Alpha.md'), 'utf8')
   expect(markdownBody(savedAlpha)).toBe(originals['Alpha.md'] + 'ALPHA_EDIT')
   expect(readRegistry(savedAlpha)?.complete).toBe(true)
@@ -161,8 +162,8 @@ try {
   await page.keyboard.press('Home'); await page.keyboard.press('Shift+End')
   await page.getByRole('button', { name: '更多排版', exact: true }).click()
   await expect(page.locator('.format-menu button')).toHaveCount(7)
-  for (const format of ['加粗', '下划线', '删除线', '斜体', '上标', '下标', '荧光笔']) await expect(page.locator('.format-menu').getByRole('button', { name: format, exact: true })).toBeVisible()
-  await page.locator('.format-menu').getByRole('button', { name: '加粗', exact: true }).click()
+  for (const format of ['加粗', '下划线', '删除线', '斜体', '上标', '下标', '荧光笔']) await expect(page.locator('.format-menu').getByRole('menuitem', { name: format, exact: true })).toBeVisible()
+  await page.locator('.format-menu').getByRole('menuitem', { name: '加粗', exact: true }).click()
   await expect(rich().locator('strong')).toHaveText('Find target, find target.')
   await sourceMode(); await expect(source()).toContainText('**Find target, find target.**')
   expect(await page.evaluate(async () => { const settings = await window.oops.settings(); return { fontFamily: settings.fontFamily, fontSize: settings.fontSize } })).toEqual(defaultTypography)
@@ -183,13 +184,14 @@ try {
   await page.locator('.folder-hierarchy').getByRole('button', { name: '文件夹', exact: true }).click()
   await expect(page.locator('.folder-list').getByRole('button', { name: '内部.md', exact: true })).toBeVisible()
   await expect(page.locator('.folder-list .block-tree')).toHaveCount(0)
-  await expect(page.locator('.document-blocks')).toBeVisible()
-  await expect(page.locator('.document-blocks').getByRole('button', { name: '跳转 Mark 1 Long title', exact: true })).toBeEnabled()
+  await expect(page.locator('.sidebar .block-tree')).toHaveCount(0)
+  await showBlockInspector(page)
+  await expect(page.locator('.document-navigator-inspector').getByRole('button', { name: '跳转 Mark 1 Long title', exact: true })).toBeEnabled()
   await expect(page.getByText('大纲暂时不可用，正文仍可继续编辑。', { exact: true })).toHaveCount(0)
   await capture('folder-hierarchy')
   passed('folder view separates folder hierarchy, selected-folder files and current-document outline')
 
-  await page.keyboard.press('Control+t')
+  await page.keyboard.press('ControlOrMeta+t')
   await expect(page.getByRole('tab')).toHaveCount(8); await expect(rich()).toBeVisible()
   await rich().click(); await page.keyboard.insertText('KEYBOARD_DRAFT')
   await expect(page.locator('.document-tab.active .tab-dirty')).toBeVisible()
@@ -197,18 +199,18 @@ try {
   await expect(page.locator('.navigation-shield')).toHaveCount(0)
   await page.keyboard.press('Control+Shift+Tab'); await expect(rich()).toContainText('KEYBOARD_DRAFT')
   await expect(page.locator('.navigation-shield')).toHaveCount(0)
-  await page.keyboard.press('Control+f'); await expect(page.getByRole('textbox', { name: '页内查找', exact: true })).toBeFocused()
+  await page.keyboard.press('ControlOrMeta+f'); await expect(page.getByRole('textbox', { name: '页内查找', exact: true })).toBeFocused()
   await page.getByRole('textbox', { name: '页内查找', exact: true }).press('Escape')
-  await page.keyboard.press('Control+w')
+  await page.keyboard.press('ControlOrMeta+w')
   await page.getByRole('dialog', { name: '当前文档尚未保存' }).getByRole('button', { name: '保留草稿', exact: true }).click()
   await expect(page.getByRole('tab')).toHaveCount(7); await expect(page.locator('.navigation-shield')).toHaveCount(0)
-  await page.keyboard.press('Control+Shift+T'); await expect(page.getByRole('tab')).toHaveCount(8); await expect(rich()).toContainText('KEYBOARD_DRAFT')
+  await page.keyboard.press('ControlOrMeta+Shift+T'); await expect(page.getByRole('tab')).toHaveCount(8); await expect(rich()).toContainText('KEYBOARD_DRAFT')
   await expect(page.locator('.navigation-shield')).toHaveCount(0)
-  await page.keyboard.press('Control+w')
+  await page.keyboard.press('ControlOrMeta+w')
   await page.getByRole('dialog', { name: '当前文档尚未保存' }).getByRole('button', { name: '保留草稿', exact: true }).click()
   await expect(page.getByRole('tab')).toHaveCount(7); await expect(tab(longName)).toHaveAttribute('aria-selected', 'true')
   await expect(page.locator('.navigation-shield')).toHaveCount(0)
-  passed('Ctrl T/W/Tab/Shift Tab/Shift T/F shortcuts create, cycle, protect, reopen and search real documents')
+  passed('platform primary shortcuts create, protect, reopen and search documents; Ctrl Tab/Shift Tab cycle tabs')
 
   await resize(920, 620); await visibleTabs(true)
   await resize(840, 620); await visibleTabs(true)

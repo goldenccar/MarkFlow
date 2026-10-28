@@ -48,9 +48,9 @@ test('committing a captured snapshot keeps later typing dirty until that exact c
   assert.equal(isDocDirty({ ...afterSave, cleanContent: lateContent }), false)
 })
 
-test('Geek raw text and unsupported metadata are preserved without an implicit edit', () => {
-  const geek = initializeDocumentContent('x = y\r\n', 'x = y\r\n', 'latex-math')
-  assert.deepEqual(geek, { content: 'x = y\n', cleanContent: 'x = y\n' })
+test('Formula raw text and unsupported metadata are preserved without an implicit edit', () => {
+  const formula = initializeDocumentContent('x = y\r\n', 'x = y\r\n', 'latex-math')
+  assert.deepEqual(formula, { content: 'x = y\n', cleanContent: 'x = y\n' })
   const invalid = 'text\n\n<!-- oops:marks {"v":2,"marks":[]} -->'
   const opened = initializeDocumentContent(invalid, invalid, 'markdown')
   assert.equal(opened.content, invalid)

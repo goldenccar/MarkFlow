@@ -1,3 +1,4 @@
+import { showBlockInspector } from './ui-test-utils.mjs'
 import { _electron as electron, expect } from '@playwright/test'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
@@ -14,15 +15,15 @@ for (const name of ['alpha.md', 'duplicate.md']) await writeFile(path.join(libra
 await writeFile(path.join(library, 'split.md'), 'LeftRight\n\nLast')
 const gitBin = process.env.OOPSMD_SMOKE_EXE ? path.join(path.dirname(process.env.OOPSMD_SMOKE_EXE), 'resources', 'git', 'cmd', 'git.exe') : 'git'
 const git = (...args) => execFileSync(gitBin, args, { cwd: library, encoding: 'utf8', windowsHide: true })
-git('init', '-b', 'main'); git('config', 'user.name', 'OopsMD Identity Test'); git('config', 'user.email', 'test@example.invalid'); git('add', '.'); git('commit', '-m', 'baseline')
-const env = { ...process.env, OOPSMD_USER_DATA: path.join(temporary, 'profile') }; delete env.ELECTRON_RUN_AS_NODE
+git('init', '-b', 'main'); git('config', 'user.name', 'MarkFlow Identity Test'); git('config', 'user.email', 'test@example.invalid'); git('add', '.'); git('commit', '-m', 'baseline')
+const env = { ...process.env, MARKFLOW_USER_DATA: path.join(temporary, 'profile') }; delete env.ELECTRON_RUN_AS_NODE
 const checks = [], errors = []
 let app, page
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const passed = name => { checks.push(name); console.log('PASS ' + name) }
 const rich = () => page.locator('.live-pane .tiptap:visible')
 const outline = () => page.getByLabel('文档 Mark', { exact: true }).first()
-const saveButton = () => page.locator('.document-bar').getByRole('button', { name: /^保存(?: Ctrl S)?$/ })
+const saveButton = () => page.locator('.document-bar').getByRole('button', { name: /^保存(?: (?:Ctrl|⌘) S)?$/ })
 function parts(source) {
   const metadata = readRegistry(source)
   return { body: markdownBody(source), metadata, marks: metadata?.marks.filter(mark => !mark.orphan) ?? [] }
@@ -43,6 +44,7 @@ async function close() {
 async function ready() {
   await expect(page.locator('.navigation-shield')).toHaveCount(0)
   await expect(saveButton()).toBeEnabled()
+  await showBlockInspector(page)
   await expect(outline().locator('button').first()).toBeEnabled()
   await expect(outline().locator('button:disabled')).toHaveCount(0)
 }
@@ -66,8 +68,8 @@ async function save(name) {
   return { ...value, source }
 }
 async function draft(name) { return parts((await page.evaluate(name => window.oops.read(name), name)).draft?.content ?? '') }
-async function undo() { await rich().focus(); await page.keyboard.press('Control+z') }
-async function redo() { await rich().focus(); await page.keyboard.press('Control+Shift+Z') }
+async function undo() { await rich().focus(); await page.keyboard.press('ControlOrMeta+z') }
+async function redo() { await rich().focus(); await page.keyboard.press('ControlOrMeta+Shift+Z') }
 async function menu(id, action, keyboard = false) {
   await ready()
   const button = outline().locator(`button[data-mark-id="${id}"]`)
@@ -164,7 +166,7 @@ try {
   await expect.poll(() => labels()).toEqual(['LeftRight?', 'Last']); expect(await ids()).toEqual(splitIds)
   await page.getByRole('button', { name: '对照', exact: true }).click()
   await expect.poll(() => page.locator('.preview-pane [data-mark-id]').evaluateAll(elements => elements.map(element => element.dataset.markId))).toEqual(splitIds)
-  await page.locator('.cm-content:visible').focus(); await page.keyboard.press('Control+z')
+  await page.locator('.cm-content:visible').focus(); await page.keyboard.press('ControlOrMeta+z')
   await expect.poll(() => labels()).toEqual(['LeftRight', 'Last']); expect(await ids()).toEqual(splitIds)
   await expect(page.locator('.unsaved-dot')).toHaveCount(0)
   await page.getByRole('button', { name: '实时预览', exact: true }).click()

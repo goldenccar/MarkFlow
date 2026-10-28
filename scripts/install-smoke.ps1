@@ -7,18 +7,19 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $package = Get-Content -LiteralPath (Join-Path $workspace 'package.json') -Raw | ConvertFrom-Json
-if ($package.build.appId -ne 'app.oopsmd.desktop' -or $package.build.productName -ne 'OopsMD') { throw 'The installer smoke test is scoped to OopsMD only.' }
+if ($package.build.appId -ne 'app.oopsmd.desktop' -or $package.build.productName -ne 'MarkFlow') { throw 'The installer smoke test is scoped to MarkFlow only.' }
 if ($package.build.nsis.perMachine -or $package.build.nsis.deleteAppDataOnUninstall) { throw 'This test requires a per-user installer that preserves app data.' }
 $guid = 'abb5ebd8-85e1-5fc5-a0c3-2e980a9ad384'
 $testRoot = Join-Path $workspace '.test-data'
 $logFile = Join-Path $testRoot 'install-validation.log'
 $node = (Get-Command node.exe -ErrorAction Stop).Source
 $shortcutPaths = @(
-  (Join-Path ([Environment]::GetFolderPath('Desktop')) 'OopsMD.lnk'),
-  (Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'OopsMD.lnk'),
-  (Join-Path ([Environment]::GetFolderPath('Programs')) 'OopsMD.lnk'),
-  (Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'OopsMD.lnk')
+  (Join-Path ([Environment]::GetFolderPath('Desktop')) 'MarkFlow.lnk'),
+  (Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'MarkFlow.lnk'),
+  (Join-Path ([Environment]::GetFolderPath('Programs')) 'MarkFlow.lnk'),
+  (Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'MarkFlow.lnk')
 )
+$legacyShortcutPaths = @($shortcutPaths | ForEach-Object { Join-Path ([IO.Path]::GetDirectoryName($_)) 'OopsMD.lnk' })
 $registryInstallPaths = @("HKCU:\Software\$guid", "HKLM:\Software\$guid", "HKCU:\Software\WOW6432Node\$guid", "HKLM:\Software\WOW6432Node\$guid")
 $uninstallRoots = @(
   'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
@@ -27,18 +28,18 @@ $uninstallRoots = @(
   'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
 )
 
-function Get-OopsRegistry {
+function Get-AppRegistry {
   foreach ($registryPath in $registryInstallPaths) {
     if (Test-Path -LiteralPath $registryPath) {
       $entry = Get-ItemProperty -LiteralPath $registryPath
-      [pscustomobject]@{ Path = $registryPath; Name = 'OopsMD install registration'; Location = $entry.InstallLocation }
+      [pscustomobject]@{ Path = $registryPath; Name = 'MarkFlow / legacy OopsMD install registration'; Location = $entry.InstallLocation }
     }
   }
   foreach ($registryRoot in $uninstallRoots) {
     if (-not (Test-Path -LiteralPath $registryRoot)) { continue }
     foreach ($key in Get-ChildItem -LiteralPath $registryRoot) {
       $entry = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue
-      if ($key.PSChildName -eq $guid -or $entry.DisplayName -like 'OopsMD*') {
+      if ($key.PSChildName -eq $guid -or ($entry.DisplayName -like 'MarkFlow*' -or $entry.DisplayName -like 'OopsMD*')) {
         [pscustomobject]@{ Path = $key.PSPath; Name = $entry.DisplayName; Location = $entry.InstallLocation }
       }
     }
@@ -46,17 +47,17 @@ function Get-OopsRegistry {
 }
 
 function Get-PreexistingState {
-  $paths = @(
-    (Join-Path $env:LOCALAPPDATA 'Programs\OopsMD'),
-    (Join-Path $env:ProgramFiles 'OopsMD'),
-    (Join-Path ${env:ProgramFiles(x86)} 'OopsMD'),
-    (Join-Path ([Environment]::GetFolderPath('Programs')) 'OopsMD'),
-    (Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'OopsMD')
-  ) + $shortcutPaths
+  $paths = @(foreach ($appName in @('MarkFlow', 'OopsMD')) {
+    Join-Path $env:LOCALAPPDATA "Programs\$appName"
+    Join-Path $env:ProgramFiles $appName
+    Join-Path ${env:ProgramFiles(x86)} $appName
+    Join-Path ([Environment]::GetFolderPath('Programs')) $appName
+    Join-Path ([Environment]::GetFolderPath('CommonPrograms')) $appName
+  }) + $shortcutPaths + $legacyShortcutPaths
   [pscustomobject]@{
-    Registry = @(Get-OopsRegistry)
+    Registry = @(Get-AppRegistry)
     ExistingPaths = @($paths | Where-Object { Test-Path -LiteralPath $_ })
-    Processes = @(Get-Process -Name OopsMD -ErrorAction SilentlyContinue | Select-Object Id, Path)
+    Processes = @(Get-Process -Name MarkFlow, OopsMD -ErrorAction SilentlyContinue | Select-Object Id, Path)
   }
 }
 
@@ -107,12 +108,12 @@ $before = Get-PreexistingState
 if ($InspectOnly) { $before | ConvertTo-Json -Depth 6; return }
 if ($before.Registry.Count -or $before.ExistingPaths.Count -or $before.Processes.Count) {
   $before | ConvertTo-Json -Depth 6
-  throw 'An existing OopsMD installation, shortcut or process was found. Installation test skipped; nothing was changed.'
+  throw 'An existing MarkFlow or legacy OopsMD installation, shortcut or process was found. Installation test skipped; nothing was changed.'
 }
 if (Test-Path -LiteralPath $testRoot) {
   if ((Get-Item -LiteralPath $testRoot).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw '.test-data must not be a link or junction.' }
 } else { New-Item -ItemType Directory -Path $testRoot | Out-Null }
-if (-not $Installer) { $Installer = Join-Path $workspace "release\OopsMD-$($package.version)-win-x64-setup.exe" }
+if (-not $Installer) { $Installer = Join-Path $workspace "release\MarkFlow-$($package.version)-win-x64-setup.exe" }
 $installerPath = (Resolve-Path -LiteralPath $Installer).Path
 if ([IO.Path]::GetDirectoryName($installerPath) -ne (Join-Path $workspace 'release')) { throw 'Only an installer in this workspace release directory can be tested.' }
 $installDirectory = Assert-ContainedDirectory (Join-Path $testRoot ("installed-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8)))
@@ -120,21 +121,24 @@ if (Test-Path -LiteralPath $installDirectory) { throw 'The test install director
 $previousSmokeExe = $env:OOPSMD_SMOKE_EXE
 $installed = $false
 $failure = $null
-$appDataPaths = @((Join-Path $env:APPDATA 'OopsMD'), (Join-Path $env:LOCALAPPDATA 'OopsMD'))
+$appDataPaths = @(foreach ($appName in @('MarkFlow', 'OopsMD')) {
+  Join-Path $env:APPDATA $appName
+  Join-Path $env:LOCALAPPDATA $appName
+})
 $appDataBefore = @($appDataPaths | Where-Object { Test-Path -LiteralPath $_ })
 
 try {
   Write-Log "BEGIN installer SHA256=$((Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash) destination=$installDirectory"
   Write-Log "Installer bytes=$((Get-Item -LiteralPath $installerPath).Length) Authenticode=$((Get-AuthenticodeSignature -LiteralPath $installerPath).Status)"
-  Write-Log 'Preflight found no previous OopsMD registration, shortcuts, default installation or process.'
+  Write-Log 'Preflight found no previous MarkFlow or legacy OopsMD registration, shortcuts, default installation or process.'
   $arguments = "/S /currentuser --no-desktop-shortcut /D=$installDirectory"
   Write-Log "RUN hidden installer $arguments"
   $process = Start-Process -FilePath $installerPath -ArgumentList $arguments -WorkingDirectory $workspace -WindowStyle Hidden -PassThru
   $installed = $true
   Wait-TestProcess $process 180 'NSIS install'
-  $installedExe = Join-Path $installDirectory 'OopsMD.exe'
+  $installedExe = Join-Path $installDirectory 'MarkFlow.exe'
   $installedAsar = Join-Path $installDirectory 'resources\app.asar'
-  $uninstaller = Join-Path $installDirectory 'Uninstall OopsMD.exe'
+  $uninstaller = Join-Path $installDirectory 'Uninstall MarkFlow.exe'
   foreach ($required in @($installedExe, $installedAsar, $uninstaller, (Join-Path $installDirectory 'resources\git\cmd\git.exe'))) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Installed file missing: $required" }
   }
@@ -159,11 +163,11 @@ try {
   if ($installed) {
     try {
       $checkedRoot = Assert-ContainedDirectory $installDirectory
-      $uninstaller = Join-Path $checkedRoot 'Uninstall OopsMD.exe'
+      $uninstaller = Join-Path $checkedRoot 'Uninstall MarkFlow.exe'
       if (-not (Test-Path -LiteralPath $uninstaller -PathType Leaf)) { throw 'Test uninstaller is missing; no manual recursive removal was attempted.' }
       if ((Get-ItemProperty -LiteralPath "HKCU:\Software\$guid").InstallLocation -ne $checkedRoot) { throw 'Registry installation ownership changed; refusing uninstall.' }
-      foreach ($running in @(Get-Process -Name OopsMD -ErrorAction SilentlyContinue)) {
-        if ($running.Path -ne (Join-Path $checkedRoot 'OopsMD.exe')) { throw 'Another OopsMD instance is running; refusing to let NSIS stop unrelated work.' }
+      foreach ($running in @(Get-Process -Name MarkFlow, OopsMD -ErrorAction SilentlyContinue)) {
+        if ($running.Path -ne (Join-Path $checkedRoot 'MarkFlow.exe')) { throw 'Another MarkFlow or legacy OopsMD instance is running; refusing to let NSIS stop unrelated work.' }
         Stop-Process -Id $running.Id -Force
       }
       Write-Log 'RUN hidden test uninstaller /S /currentuser /KEEP_APP_DATA (no --delete-app-data).'
@@ -171,13 +175,13 @@ try {
       Wait-TestProcess $process 120 'NSIS uninstall'
       $watch = [Diagnostics.Stopwatch]::StartNew()
       while ($watch.Elapsed.TotalSeconds -lt 60) {
-        $remainingRegistry = @(Get-OopsRegistry)
+        $remainingRegistry = @(Get-AppRegistry)
         $remainingShortcuts = @($shortcutPaths | Where-Object { Test-Path -LiteralPath $_ })
         if (-not (Test-Path -LiteralPath $checkedRoot) -and -not $remainingRegistry.Count -and -not $remainingShortcuts.Count) { break }
         Start-Sleep -Milliseconds 500
       }
       if (Test-Path -LiteralPath $checkedRoot) { throw 'The test installation directory remains after uninstallation; no manual recursive removal was attempted.' }
-      if (@(Get-OopsRegistry).Count) { throw 'OopsMD registry entries remain after test uninstall.' }
+      if (@(Get-AppRegistry).Count) { throw 'MarkFlow or legacy OopsMD registry entries remain after test uninstall.' }
       foreach ($shortcutPath in $shortcutPaths) { if (Test-Path -LiteralPath $shortcutPath) { throw "Test shortcut remains: $shortcutPath" } }
       foreach ($profile in $appDataBefore) { if (-not (Test-Path -LiteralPath $profile)) { throw "Pre-existing app data directory was removed: $profile" } }
       Write-Log 'PASS uninstall removed the test program directory, registration and shortcuts; pre-existing app data was retained.'

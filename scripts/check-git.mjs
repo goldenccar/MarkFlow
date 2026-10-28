@@ -23,7 +23,7 @@ export async function readManifest() {
 
 export function sourceNotice(manifest) {
   return [
-    `OopsMD bundles the unmodified ${manifest.archive} runtime.`,
+    `MarkFlow bundles the unmodified ${manifest.archive} runtime.`,
     `Release: ${manifest.releaseUrl}`,
     `Archive SHA-256: ${manifest.archiveSha256}`,
     '',
@@ -45,7 +45,8 @@ export async function runtimeInventory(root) {
   async function walk(relative) {
     for (const entry of await fs.readdir(path.join(root, relative), { withFileTypes: true })) {
       const item = path.posix.join(relative, entry.name)
-      if (['OOPSMD-GIT-SOURCE.txt', '.oopsmd-runtime.json'].includes(item)) continue
+      // Legacy provenance files are accepted only while prepare:git refreshes metadata.
+      if (['MARKFLOW-GIT-SOURCE.txt', '.markflow-runtime.json', 'OOPSMD-GIT-SOURCE.txt', '.oopsmd-runtime.json'].includes(item)) continue
       if (entry.isSymbolicLink()) throw new Error(`Git runtime must not contain symlinks: ${item}`)
       if (entry.isDirectory()) await walk(item)
       else if (entry.isFile()) files.push(item)
@@ -72,8 +73,8 @@ export async function verifyRuntime(root = path.join(workspace, 'vendor', 'git')
   }
   for (const license of manifest.requiredLicenses) if (!(await fs.readFile(path.join(root, license))).length) throw new Error(`Missing license: ${license}`)
   if (metadata) {
-    if (await fs.readFile(path.join(root, 'OOPSMD-GIT-SOURCE.txt'), 'utf8') !== sourceNotice(manifest)) throw new Error('Git source/license notice is missing or altered.')
-    if (await fs.readFile(path.join(root, '.oopsmd-runtime.json'), 'utf8') !== `${JSON.stringify(manifest, null, 2)}\n`) throw new Error('Bundled Git provenance manifest differs from the pinned manifest.')
+    if (await fs.readFile(path.join(root, 'MARKFLOW-GIT-SOURCE.txt'), 'utf8') !== sourceNotice(manifest)) throw new Error('Git source/license notice is missing or altered. Run npm run prepare:git to refresh the runtime metadata.')
+    if (await fs.readFile(path.join(root, '.markflow-runtime.json'), 'utf8') !== `${JSON.stringify(manifest, null, 2)}\n`) throw new Error('Bundled Git provenance manifest differs from the pinned manifest.')
   }
   if (process.platform !== 'win32') throw new Error('Execute the Windows Git runtime check on Windows.')
   // Exclude installed Git from PATH; the bundled executables must work on their own.

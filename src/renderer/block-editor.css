@@ -2,11 +2,12 @@
 .block-editor [hidden] { display: none !important; }
 .rich-editor { height: 100%; overflow: auto; scrollbar-gutter: stable; color: var(--text); background: var(--bg); }
 .rich-editor .tiptap {
+  --editor-gutter: max(36px, var(--document-gutter, 48px));
   box-sizing: border-box;
   width: 100%;
-  max-width: calc(var(--line-width, 780px) + var(--document-gutter, 48px) * 2);
+  max-width: calc(var(--line-width, 780px) + var(--editor-gutter) * 2);
   min-height: 100%;
-  padding: var(--document-top-space, 40px) var(--document-gutter, 48px) var(--document-bottom-space, 96px);
+  padding: var(--document-top-space, 40px) var(--editor-gutter) var(--document-bottom-space, 96px);
   margin-inline: auto;
   outline: none;
   line-height: inherit;
@@ -27,17 +28,42 @@
 .rich-editor .tiptap table { table-layout: fixed; }
 .rich-editor .tiptap :is(th, td) { position: relative; min-width: 60px; }
 .rich-editor .tiptap .selectedCell::after { position: absolute; inset: 0; background: var(--selection); content: ''; pointer-events: none; }
-.rich-editor .rich-opaque { padding: 2px 6px; color: var(--muted); background: var(--shell); border: 1px solid var(--line); border-radius: 5px; font: 12px/1.7 'Segoe UI', 'Microsoft YaHei UI', sans-serif; user-select: none; }
+.rich-editor .rich-opaque { padding: 2px 6px; color: var(--muted); background: var(--shell); border: 1px solid var(--line); border-radius: 5px; font: 12px/1.7 var(--font-ui); user-select: none; }
 .rich-editor div.rich-opaque { margin: 1em 0; padding: 9px 12px; }
 .rich-editor .ProseMirror-selectednode { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 4px; }
 .rich-editor .rich-math { position: relative; white-space: normal; }
 .rich-editor .rich-math.is-block { margin: 1.4em 0; padding: .35em 0; }
 .rich-editor .rich-math.is-inline { display: inline-block; }
 .rich-editor .rich-math .katex-display { margin: 0; padding: 0; }
-.rich-editor .rich-math-edit { position: absolute; z-index: 1; top: -22px; right: 0; min-height: 24px; padding: 0 7px; font: 11px/1.4 'Segoe UI', 'Microsoft YaHei UI', sans-serif; color: var(--muted); border: 1px solid var(--line); background: var(--bg); border-radius: 5px; opacity: 0; transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease; }
+.rich-editor .rich-math-edit { position: absolute; z-index: 1; top: -22px; right: 0; min-height: 24px; padding: 0 7px; font: 11px/1.4 var(--font-ui); color: var(--muted); border: 1px solid var(--line); background: var(--bg); border-radius: 5px; opacity: 0; transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease; }
 .rich-editor .rich-math:is(:hover, :focus-within, .ProseMirror-selectednode) .rich-math-edit, .rich-editor .rich-math-edit:focus-visible { opacity: 1; }
 .rich-editor .rich-math-edit:is(:hover, :focus-visible) { color: var(--text); background: var(--hover); }
-.rich-editor .rich-math textarea { display: block; width: min(600px, 100%); min-width: min(200px, 100%); padding: 12px 14px; border: 1px solid var(--outline); border-radius: 6px; background: var(--bg); color: var(--text); font: 14px/1.65 'Cascadia Code', Consolas, monospace; resize: vertical; }
+.rich-editor .rich-math textarea { display: block; width: min(600px, 100%); min-width: min(200px, 100%); padding: 12px 14px; border: 1px solid var(--outline); border-radius: 6px; background: var(--bg); color: var(--text); font: 14px/1.65 var(--font-mono); resize: vertical; }
 .rich-editor .rich-math textarea:focus { border-color: var(--focus); outline: 2px solid color-mix(in srgb, var(--focus) 18%, transparent); outline-offset: 2px; }
+.rich-editor [data-mark-id] { transition: background-color 140ms ease, box-shadow 140ms ease; }
+.rich-editor .block-menu-target { border-radius: 4px; background-color: color-mix(in srgb, var(--selection) 45%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--selection) 45%, transparent); }
+.block-format-handle {
+  position: fixed; left: 0; top: 0; z-index: 5; display: flex; width: 24px; height: 26px; min-height: 26px; padding: 0;
+  border: 0; border-radius: 5px; color: var(--muted); background: transparent;
+  animation: block-handle-enter 120ms ease-out; transition: color 120ms ease, background-color 120ms ease;
+}
+.block-format-handle:hover, .block-format-handle.is-open { color: var(--text); background: var(--hover); }
+.block-format-menu {
+  position: fixed; z-index: 40; width: 220px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto;
+  padding: 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-raised, var(--bg)); color: var(--text);
+  box-shadow: var(--menu-shadow, 0 12px 32px #0002); font: 12px/1.4 var(--font-ui);
+  transform-origin: top left; animation: block-menu-enter 140ms cubic-bezier(.2, .7, .2, 1);
+}
+.block-format-menu-heading { display: flex; align-items: center; justify-content: space-between; padding: 5px 8px 8px; color: var(--muted); font-size: 11px; }
+.block-format-menu-heading span { font-size: 10px; color: var(--subtle); }
+.block-format-menu > button { display: flex; justify-content: flex-start; width: 100%; min-height: 32px; gap: 10px; padding: 4px 8px; border-radius: 5px; }
+.block-format-menu > button:focus-visible { outline: none; background: var(--hover); box-shadow: inset 0 0 0 1px var(--focus); }
+.block-format-menu > button[aria-checked='true'] { color: var(--accent); background: color-mix(in srgb, var(--accent-bg) 65%, transparent); }
+.block-format-icon { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0; border-radius: 5px; background: var(--shell); font: 11px/1 var(--font-ui); color: var(--muted); }
+.block-format-check { margin-left: auto; font-size: 12px; }
+.block-format-note { margin: 5px 4px 2px; padding: 8px 4px 2px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.6; }
+@keyframes block-handle-enter { from { opacity: 0; } to { opacity: 1; } }
+.app[data-layout-animating='true'] .block-format-handle { visibility: hidden; }
+@keyframes block-menu-enter { from { opacity: 0; transform: translateY(3px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @media (hover: none) { .rich-editor .rich-math-edit { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .rich-editor .rich-math-edit { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .rich-editor .rich-math-edit, .rich-editor [data-mark-id], .block-format-handle, .block-format-menu { transition: none; animation: none; } }

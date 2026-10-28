@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { defaultSettings, fontFamilies, type ArchiveEntry, type DiskFile, type Draft, type FileEntry, type MutationResult, type Settings } from '../shared/types'
+import { isThemePreference } from '../shared/theme'
 
 const documentExtensions = new Set(['.md', '.markdown', '.mdown', '.txt', '.tex'])
 const ignored = new Set(['.git', 'node_modules'])
@@ -131,7 +132,7 @@ export class FileService {
     return compactArchive(entries)
   }
 
-  // Checking the actual spelling distinguishes a completed Windows case-only rename.
+  // Checking the actual spelling distinguishes a completed case-only rename on insensitive volumes.
   private async archivePathExists(relative: string): Promise<boolean> {
     const target = await this.resolve(relative)
     if (!await exists(target)) return false
@@ -413,7 +414,10 @@ export class FileService {
       const sourceStat = await fs.lstat(source)
       if (sourceStat.isDirectory() && inside(source, target) && !samePath(source, target)) throw new Error('不能把文件夹移动到它自身内部。')
       const targetExists = await exists(target)
-      const caseRename = process.platform === 'win32' && sourceRelative.toLowerCase() === targetRelative.toLowerCase()
+      // macOS volumes may be case-sensitive or insensitive. Recognize an actual
+      // resolved alias instead of assuming a filesystem policy from the OS name.
+      const caseRename = sourceRelative.toLowerCase() === targetRelative.toLowerCase()
+        && (process.platform === 'win32' || targetExists && source === target)
       if (targetExists && !caseRename) throw new Error('目标路径已存在，请使用其他名称。')
       if (targetExists && caseRename) {
         const targetStat = await fs.lstat(target)
@@ -425,7 +429,7 @@ export class FileService {
       // Durable copies at the new paths exist before moving disk files; old drafts remain until success.
       const drafts = await this.prepareDraftMove(sourceRelative, targetRelative)
       try {
-        // A temporary sibling makes Windows case-only renames reliable and reversible.
+        // A temporary sibling preserves the requested spelling and allows rollback.
         if (caseRename) {
           const temporary = path.join(path.dirname(source), `.oopsmd-${randomUUID()}.tmp`)
           const spelledTarget = path.join(await this.resolve(path.posix.dirname(targetRelative) === '.' ? '' : path.posix.dirname(targetRelative)), path.posix.basename(targetRelative))
@@ -482,7 +486,7 @@ function validatedSettings(input: unknown): Settings {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('设置格式无效。')
   const settings = { ...defaultSettings, ...input } as Settings
   if (typeof settings.autoCommit !== 'boolean' || !Number.isSafeInteger(settings.threshold) || settings.threshold < 1
-    || !['light', 'dark'].includes(settings.theme) || !['source', 'preview', 'split'].includes(settings.layout)
+    || !isThemePreference(settings.theme) || !['source', 'preview', 'split'].includes(settings.layout)
     || !Number.isFinite(settings.fontSize) || settings.fontSize < 10 || settings.fontSize > 48 || !fontFamilies.includes(settings.fontFamily)
     || !Number.isFinite(settings.lineHeight) || settings.lineHeight < 1 || settings.lineHeight > 3
     || !Number.isFinite(settings.lineWidth) || settings.lineWidth < 320 || settings.lineWidth > 2400

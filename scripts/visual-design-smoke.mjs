@@ -1,3 +1,4 @@
+import { showBlockInspector, setTheme } from './ui-test-utils.mjs'
 import { _electron as electron, expect } from '@playwright/test'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -74,7 +75,7 @@ const math = [
 ].join('\n')
 const files = { [longName]: markdown, [mathName]: math, '项目索引.md': '# 项目索引\n\n研究、记录与复核。\n', '设计记录.md': '# 设计记录\n\n界面与内容结构。\n', '参考资料/来源清单.md': '# 来源清单\n\n保留原始资料位置。\n' }
 await Promise.all(Object.entries(files).map(([name, content]) => writeFile(path.join(library, name), content)))
-const env = { ...process.env, OOPSMD_USER_DATA: profile }; delete env.ELECTRON_RUN_AS_NODE
+const env = { ...process.env, MARKFLOW_USER_DATA: profile }; delete env.ELECTRON_RUN_AS_NODE
 const screenshots = [], issues = [], checks = [], metrics = [], errors = []
 let app, page
 const tree = name => page.locator('.tree-scroll').getByRole('button', { name, exact: true })
@@ -84,7 +85,7 @@ const passed = name => { checks.push(name); console.log('PASS ' + name) }
 const record = (name, findings) => { for (const finding of findings) issues.push({ state: name, ...finding }) }
 async function ready() {
   await expect(page.locator('.navigation-shield')).toHaveCount(0)
-  await expect(page.locator('.document-bar').getByRole('button', { name: /^保存(?: Ctrl S)?$/ })).toBeEnabled()
+  await expect(page.locator('.document-bar').getByRole('button', { name: /^保存(?: (?:Ctrl|⌘) S)?$/ })).toBeEnabled()
 }
 async function resize(width, height) {
   await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setContentSize(...size), [width, height])
@@ -92,8 +93,7 @@ async function resize(width, height) {
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
 }
 async function theme(value) {
-  if (await page.locator('html').getAttribute('data-theme') !== value) await page.getByRole('button', { name: '切换主题', exact: true }).click()
-  await expect(page.locator('html')).toHaveAttribute('data-theme', value)
+  await setTheme(page, value)
 }
 async function capture(name) {
   const filename = path.join(temporary, `${name}.png`)
@@ -106,12 +106,12 @@ async function geometry(name) {
     const visible = node => { const rect = node.getBoundingClientRect(), css = getComputedStyle(node); return rect.width > 0 && rect.height > 0 && css.display !== 'none' && css.visibility !== 'hidden' && css.opacity !== '0' }
     const rect = node => { const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, right: r.right, bottom: r.bottom } }
     if (document.documentElement.scrollWidth > innerWidth + 1) findings.push({ kind: 'page-overflow', width: document.documentElement.scrollWidth, viewport: innerWidth })
-    for (const selector of ['.document-bar', '.editor-toolbar', '.statusbar', '.sidebar-footer']) {
+    for (const selector of ['.document-bar', '.editor-toolbar', '.find-bar', '.statusbar', '.sidebar-footer']) {
       const region = document.querySelector(selector)
       if (!region) continue
       const bounds = region.getBoundingClientRect(); regionMetrics[selector] = rect(region)
       for (const control of region.querySelectorAll('button,input,select')) {
-        if (!visible(control) || control.closest('.format-menu') || control.matches('.search-open input') && getComputedStyle(control).position === 'absolute') continue
+        if (!visible(control) || control.closest('[role="menu"]')) continue
         const r = control.getBoundingClientRect()
         if (r.left < bounds.left - 1 || r.right > bounds.right + 1 || r.top < bounds.top - 1 || r.bottom > bounds.bottom + 1) findings.push({ kind: 'control-overflow', region: selector, control: control.getAttribute('aria-label') || control.textContent.trim(), rect: rect(control) })
       }
@@ -132,7 +132,8 @@ async function geometry(name) {
     const strip = document.querySelector('.tab-strip').getBoundingClientRect(), active = document.querySelector('.document-tab.active')?.getBoundingClientRect()
     if (active && (active.left < strip.left - 1 || active.right > strip.right + 1)) findings.push({ kind: 'active-tab-clipped', active: { left: active.left, right: active.right }, strip: { left: strip.left, right: strip.right } })
     const add = document.querySelector('.tab-new').getBoundingClientRect()
-    if (add.right > innerWidth - 140 + 1) findings.push({ kind: 'native-caption-overlap', right: add.right, boundary: innerWidth - 140 })
+    const captionWidth = parseFloat(getComputedStyle(document.querySelector('.window-drag')).paddingRight)
+    if (add.right > innerWidth - captionWidth + 1) findings.push({ kind: 'native-caption-overlap', right: add.right, boundary: innerWidth - captionWidth })
     return { findings, regionMetrics, viewport: [innerWidth, innerHeight], outlineCount: document.querySelectorAll('.block-tree button:not(:disabled)').length, toolbar: getComputedStyle(document.querySelector('.editor-toolbar')).backgroundColor, bodyFont: document.querySelector('.tiptap') ? getComputedStyle(document.querySelector('.tiptap')).fontFamily : null }
   })
   record(name, result.findings); metrics.push({ name, ...result })
@@ -152,6 +153,7 @@ async function popup(name, selector) {
 }
 async function sourceTop() { await page.locator('.cm-scroller:visible').evaluate(element => { element.scrollTop = 0; element.scrollLeft = 0 }) }
 async function markdownTop() {
+  await showBlockInspector(page)
   await expect(outline().locator('button').first()).toBeEnabled()
   await outline().getByRole('button', { name: /^跳转 Mark \d+ 清晰记录，持续思考$/ }).click()
   await expect(page.locator('.font-control')).toHaveAttribute('title', '当前 Mark：清晰记录，持续思考')
@@ -175,6 +177,7 @@ try {
   await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }) }, library)
   await page.getByRole('button', { name: '打开项目', exact: true }).click()
   for (const name of ['项目索引.md', '设计记录.md', mathName, longName]) await open(name)
+  await showBlockInspector(page)
   await expect(outline().locator('button').first()).toBeEnabled()
   expect(await outline().locator('button').count()).toBeGreaterThan(12)
   await expect(page.locator('.live-pane table')).toHaveCount(1)
@@ -196,19 +199,18 @@ try {
       await capture(name + '-structured-content')
       await markdownTop()
 
-      await page.keyboard.press('Control+f')
+      await page.keyboard.press('ControlOrMeta+f')
       const search = page.getByRole('textbox', { name: '页内查找', exact: true })
       await expect(search).toBeFocused(); await search.fill('观察')
       await expect(page.locator('.find-bar')).toContainText(/\d+\s*\/\s*\d+/)
       await geometry(name + '-search')
-      if (await search.evaluate(element => getComputedStyle(element).position === 'absolute')) await popup(name + '-search-focus', '.toolbar-search input')
-      else await capture(name + '-search-focus')
+      await popup(name + '-search-focus', '.find-bar')
       await search.press('Escape'); await expect(page.locator('.find-bar')).toHaveCount(0)
 
       if (await page.getByRole('button', { name: '更多排版', exact: true }).isVisible()) {
         await page.getByRole('button', { name: '更多排版', exact: true }).click()
         await expect(page.locator('.format-menu button')).toHaveCount(7)
-        for (const format of ['加粗', '下划线', '删除线', '斜体', '上标', '下标', '荧光笔']) await expect(page.locator('.format-menu').getByRole('button', { name: format, exact: true })).toBeVisible()
+        for (const format of ['加粗', '下划线', '删除线', '斜体', '上标', '下标', '荧光笔']) await expect(page.locator('.format-menu').getByRole('menuitem', { name: format, exact: true })).toBeVisible()
         await popup(name + '-format-menu', '.format-menu')
         await page.keyboard.press('Escape')
       } else for (const format of ['加粗', '下划线', '删除线', '斜体', '上标', '下标', '荧光笔']) await expect(page.locator('.format-tools').getByRole('button', { name: format, exact: true })).toBeVisible()
@@ -265,7 +267,7 @@ try {
   const report = { ok: issues.length === 0 && errors.length === 0, label, details, temporary, library, profile, checks, screenshots, metrics, issues, errors }
   await writeFile(path.join(temporary, 'report.json'), JSON.stringify(report, null, 2))
   const escape = value => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;')
-  await writeFile(path.join(temporary, 'index.html'), `<!doctype html><meta charset="utf-8"><title>OopsMD visual ${escape(label)}</title><style>body{font:14px system-ui;margin:32px;background:#edf0f4;color:#202832}main{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:24px}figure{margin:0}img{width:100%;border-radius:8px;border:1px solid #c9d0da}figcaption{padding:8px 0}h1{font-size:24px}</style><h1>OopsMD · ${escape(label)}</h1><p>${screenshots.length} screenshots · ${issues.length} findings</p><main>${screenshots.map(item => `<figure><a href="${escape(path.basename(item.path))}"><img src="${escape(path.basename(item.path))}" loading="lazy"></a><figcaption>${escape(item.name)}</figcaption></figure>`).join('')}</main>`)
+  await writeFile(path.join(temporary, 'index.html'), `<!doctype html><meta charset="utf-8"><title>MarkFlow visual ${escape(label)}</title><style>body{font:14px system-ui;margin:32px;background:#edf0f4;color:#202832}main{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:24px}figure{margin:0}img{width:100%;border-radius:8px;border:1px solid #c9d0da}figcaption{padding:8px 0}h1{font-size:24px}</style><h1>MarkFlow · ${escape(label)}</h1><p>${screenshots.length} screenshots · ${issues.length} findings</p><main>${screenshots.map(item => `<figure><a href="${escape(path.basename(item.path))}"><img src="${escape(path.basename(item.path))}" loading="lazy"></a><figcaption>${escape(item.name)}</figcaption></figure>`).join('')}</main>`)
   console.log(JSON.stringify({ ok: report.ok, label, temporary, checks: checks.length, screenshots: screenshots.length, issues, errors, report: path.join(temporary, 'report.json'), gallery: path.join(temporary, 'index.html') }, null, 2))
   if (!report.ok) process.exitCode = 1
 }

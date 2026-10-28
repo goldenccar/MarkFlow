@@ -1,6 +1,6 @@
 # Windows Git 运行时
 
-OopsMD 的 Windows x64 安装包携带官方标准版 MinGit。开发模式使用本机 Git；打包版使用 `resources/git/cmd/git.exe`。运行时完整保留上游文件，包括 Git Credential Manager、OpenSSH、证书和各组件许可证，没有依赖用户另装 Git。
+MarkFlow 的 Windows x64 安装包携带官方标准版 MinGit。开发模式使用本机 Git；打包版使用 `resources/git/cmd/git.exe`。运行时完整保留上游文件，包括 Git Credential Manager、OpenSSH、证书和各组件许可证，没有依赖用户另装 Git。
 
 ## 固定来源与校验
 
@@ -31,17 +31,17 @@ node scripts/check-git.mjs release/win-unpacked/resources/git
 | `cmd/git.exe credential-manager --version` | `2.9.1+6760f0ef069c994aa2bb1d703fb374986ee82a3e` |
 | `usr/bin/ssh.exe -V` | `OpenSSH_10.6p1, OpenSSL 3.5.9 29 Sep 2026` |
 
-标准 MinGit 自带 `credential.helper=manager`。HTTPS 认证交由 GCM 和系统凭据存储；SSH 使用已有密钥、agent 和 `known_hosts`。首次使用应在终端完成认证及 SSH 主机指纹确认，然后在 OopsMD 中同步。应用不保存 token、私钥或密码，不把凭据写入文档库。首版没有内嵌登录界面，也不自动创建密钥或修改全局 Git 配置。
+标准 MinGit 自带 `credential.helper=manager`。HTTPS 认证交由 GCM 和系统凭据存储；SSH 使用已有密钥、agent 和 `known_hosts`。首次使用应在终端完成认证及 SSH 主机指纹确认，然后在 MarkFlow 中同步。应用不保存 token、私钥或密码，不把凭据写入文档库。首版没有内嵌登录界面，也不自动创建密钥或修改全局 Git 配置。
 
 上表确认随包程序能独立运行；隔离 `PATH` 后，Git 能找到随包 GCM，并能通过内置 shell 调用随包 `ssh -V`。未访问用户账号，未把私有仓库 HTTPS 登录、SSH 密钥访问或真实 GitHub 推送标为验收通过。MinGit 的默认系统配置会继承已有 Git for Windows 配置，实际运行时用户配置仍可能改变 helper、代理和 SSH 选择。
 
 ## 许可证与对应源代码
 
-完整保留原始 `LICENSE.txt`、`ucrt64/doc/git-credential-manager/LICENSE`、`ucrt64/share/licenses/`、`usr/share/licenses/`。根目录许可为 Git 的 GPL v2 文本；GCM 为 MIT；OpenSSH、OpenSSL 等适用各自许可证。准备脚本额外生成 `OOPSMD-GIT-SOURCE.txt` 和 `.oopsmd-runtime.json`，随安装包保留来源与校验记录。
+完整保留原始 `LICENSE.txt`、`ucrt64/doc/git-credential-manager/LICENSE`、`ucrt64/share/licenses/`、`usr/share/licenses/`。根目录许可为 Git 的 GPL v2 文本；GCM 为 MIT；OpenSSH、OpenSSL 等适用各自许可证。准备脚本额外生成 `MARKFLOW-GIT-SOURCE.txt` 和 `.markflow-runtime.json`，随安装包保留来源与校验记录。已准备过旧版运行时的环境需重新运行 `npm run prepare:git`，校验原始文件后会更新这两份元数据并移除旧名称文件。
 
 - [同版本 Git 源代码和构建配方归档](https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.3/mingw-w64-git-2.56.0.3-1.src.tar.gz)。
 - [同版本 Git 源码树](https://github.com/git-for-windows/git/tree/v2.56.0.windows.3)。
 - [Git for Windows SDK 与组件包元数据](https://github.com/git-for-windows/git-sdk-64)。
 - [GPL v2 正文](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html)。
 
-这些是上游源码获取入口，不是 OopsMD 发布方作出的书面源码提供承诺。对外发布二进制前，发布方还需按各组件许可证提供所需的对应源代码、构建材料或有效书面要约；本地打包检查不宣称完成公开分发的全部合规审查。
+这些是上游源码获取入口，不是 MarkFlow 发布方作出的书面源码提供承诺。对外发布二进制前，发布方还需按各组件许可证提供所需的对应源代码、构建材料或有效书面要约；本地打包检查不宣称完成公开分发的全部合规审查。

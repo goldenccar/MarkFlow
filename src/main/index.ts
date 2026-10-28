@@ -1,6 +1,6 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, net, protocol, shell } from 'electron'
-import { watch, type FSWatcher } from 'node:fs'
-import { readFile, stat, writeFile, mkdir } from 'node:fs/promises'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, net, protocol, shell } from 'electron'
+import { mkdirSync, watch, type FSWatcher } from 'node:fs'
+import { readFile, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { FileService, getSettings, putSettings } from './files'
@@ -8,16 +8,25 @@ import { GitService } from './git'
 import { getFonts } from './fonts'
 import { authorizedProject, preserveProjectAuthorization, projectForFile, rememberProject, sameRoot } from './projects'
 import { UntitledService, validateUntitled } from './untitled'
-import type { Draft, FileEntry, Library, SaveRequest, SaveUntitledRequest, SaveUntitledResult, Settings } from '../shared/types'
+import { windowPalette as resolveWindowPalette } from './windowTheme'
+import { isThemePreference } from '../shared/theme'
+import type { Draft, FileEntry, Library, SaveRequest, SaveUntitledRequest, SaveUntitledResult, Settings, WindowAppearance } from '../shared/types'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-if (process.env.OOPSMD_USER_DATA) app.setPath('userData', path.resolve(process.env.OOPSMD_USER_DATA))
+const appName = 'MarkFlow'
+// Retain the existing profile, including Chromium storage, when the display name changes.
+const userDataDirectory = path.resolve(process.env.MARKFLOW_USER_DATA || process.env.OOPSMD_USER_DATA || path.join(app.getPath('appData'), 'oopsmd'))
+mkdirSync(userDataDirectory, { recursive: true })
+app.setPath('userData', userDataDirectory)
+app.setPath('sessionData', userDataDirectory)
+app.setName(appName)
 protocol.registerSchemesAsPrivileged([{ scheme: 'oops-asset', privileges: { standard: true, secure: true, supportFetchAPI: true } }])
 let window: BrowserWindow
 let files: FileService | null = null
 let git: GitService | null = null
 let watcher: FSWatcher | undefined
 let allowClose = false
+let windowAppearance: WindowAppearance = { theme: 'system', mode: 'markdown' }
 let tail: Promise<unknown> = Promise.resolve()
 const serialize = <T>(task: () => Promise<T>): Promise<T> => {
   const next = tail.then(task, task)
@@ -191,7 +200,7 @@ function wireIPC() {
   handle('files:move', async (from: string, to: string) => service().move(text(from), text(to)))
   handle('files:remove', async (relative: string) => service().remove(text(relative)))
   handle('files:export', async (content: string) => {
-    const result = await dialog.showSaveDialog(window, { defaultPath: 'OopsMD-recovery.md' })
+    const result = await dialog.showSaveDialog(window, { defaultPath: 'MarkFlow-recovery.md' })
     if (result.canceled || !result.filePath) return false
     await writeFile(result.filePath, text(content), 'utf8'); return true
   })
@@ -200,7 +209,7 @@ function wireIPC() {
     // Project and recent-file roots are authorization records owned by the main process.
     const existing = await getSettings(app.getPath('userData'))
     const saved = await putSettings(app.getPath('userData'), preserveProjectAuthorization(settings, existing))
-    if (saved.theme !== existing.theme && !window.isDestroyed()) window.setTitleBarOverlay(captionOverlay(saved.theme))
+    if (saved.theme !== existing.theme) applyWindowAppearance({ ...windowAppearance, theme: saved.theme })
     return saved
   })
   handle('git:status', async () => repository().status())
@@ -240,12 +249,29 @@ function wireIPC() {
   handle('clipboard:write-text', async (value) => { await clipboard.writeText(text(value)) }, false)
   handle('view:find', async (query) => { if (text(query)) window.webContents.findInPage(query) }, false)
   handle('view:stop-find', async () => window.webContents.stopFindInPage('clearSelection'), false)
+  handle('view:appearance', async (appearance: WindowAppearance) => {
+    if (!appearance || !isThemePreference(appearance.theme) || !['markdown', 'latex-math'].includes(appearance.mode)) throw new Error('无效的窗口外观')
+    applyWindowAppearance({ theme: appearance.theme, mode: appearance.mode })
+  }, false)
   ipcMain.on('app:close-ready', (event) => { trusted(event); allowClose = true; window.close() })
 }
-const captionOverlay = (theme: Settings['theme']) => ({ color: theme === 'dark' ? '#1b1e1c' : '#ecefea', symbolColor: theme === 'dark' ? '#e8ebe8' : '#242825', height: 40 })
+// Keep the native caption buttons in the same palette as the renderer title bar.
+const windowPalette = (appearance: WindowAppearance) => resolveWindowPalette(appearance, nativeTheme.shouldUseDarkColors)
+const captionOverlay = (appearance: WindowAppearance) => {
+  const palette = windowPalette(appearance)
+  return { color: palette.caption, symbolColor: palette.text, height: 40 }
+}
+function applyWindowAppearance(appearance: WindowAppearance) {
+  windowAppearance = appearance
+  if (!window || window.isDestroyed()) return
+  window.setBackgroundColor(windowPalette(appearance).background)
+  if (process.platform !== 'darwin') window.setTitleBarOverlay(captionOverlay(appearance))
+}
 async function createWindow() {
   const settings = await getSettings(app.getPath('userData'))
-  window = new BrowserWindow({ width: 1440, height: 940, minWidth: 920, minHeight: 620, title: 'OopsMD', backgroundColor: settings.theme === 'dark' ? '#202123' : '#f5f6f3', titleBarStyle: 'hidden', titleBarOverlay: captionOverlay(settings.theme), autoHideMenuBar: true,
+  windowAppearance = { theme: settings.theme, mode: 'markdown' }
+  window = new BrowserWindow({ width: 1440, height: 940, minWidth: 920, minHeight: 620, title: appName, backgroundColor: windowPalette(windowAppearance).background, titleBarStyle: 'hidden',
+    ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 16, y: 14 } } : { titleBarOverlay: captionOverlay(windowAppearance) }), autoHideMenuBar: true,
     webPreferences: { preload: path.join(here, '../preload/index.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false } })
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-navigate', (event) => event.preventDefault())
@@ -272,7 +298,10 @@ async function createWindow() {
   else await window.loadFile(path.join(here, '../renderer/index.html'))
 }
 app.whenReady().then(async () => {
-  await mkdir(app.getPath('userData'), { recursive: true })
+  // Read the OS preference without overriding Chromium or changing the system appearance.
+  const followNativeTheme = () => { if (windowAppearance.theme === 'system') applyWindowAppearance(windowAppearance) }
+  nativeTheme.on('updated', followNativeTheme)
+  app.once('will-quit', () => nativeTheme.removeListener('updated', followNativeTheme))
   protocol.handle('oops-asset', async (request) => {
     try {
       const url = new URL(request.url)
@@ -288,5 +317,5 @@ app.whenReady().then(async () => {
   })
   wireIPC()
   await createWindow()
-}).catch((error) => { dialog.showErrorBox('OopsMD 启动失败', String(error)); app.quit() })
+}).catch((error) => { dialog.showErrorBox(`${appName} 启动失败`, String(error)); app.quit() })
 app.on('window-all-closed', () => app.quit())

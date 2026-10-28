@@ -19,7 +19,7 @@ await writeFile(target, initial)
 const gitBin = process.env.OOPSMD_SMOKE_EXE ? path.join(path.dirname(process.env.OOPSMD_SMOKE_EXE), 'resources', 'git', 'cmd', 'git.exe') : 'git'
 const git = (...args) => execFileSync(gitBin, args, { cwd: project, windowsHide: true, encoding: 'utf8' }).trim()
 git('init', '-b', 'main'); git('config', 'user.name', 'Close Race Test'); git('config', 'user.email', 'test@example.invalid'); git('add', '.'); git('commit', '-m', 'baseline')
-const env = { ...process.env, OOPSMD_USER_DATA: profile }
+const env = { ...process.env, MARKFLOW_USER_DATA: profile }
 delete env.ELECTRON_RUN_AS_NODE
 const app = await electron.launch({ ...(process.env.OOPSMD_SMOKE_EXE ? { executablePath: process.env.OOPSMD_SMOKE_EXE, args: [] } : { args: [root] }), env })
 let page
@@ -36,7 +36,7 @@ try {
   const source = page.locator('.cm-content')
   await expect(source).toHaveAttribute('contenteditable', 'true')
   expect(await source.evaluate(element => element.cmTile.root.view.state.doc.toString())).toBe(initial)
-  await source.click(); await page.keyboard.press('Control+End')
+  await source.click(); await page.keyboard.press('ControlOrMeta+End')
   expect(await source.evaluate(element => element.cmTile.root.view.state.selection.main.head)).toBe(initial.length)
   await page.keyboard.press('Enter'); await page.keyboard.insertText('CLOSE_CAPTURED')
   expect(await source.evaluate(element => element.cmTile.root.view.state.doc.toString())).toBe(content)
@@ -71,7 +71,7 @@ try {
   await app.evaluate(() => globalThis.__releaseCloseStatus())
   await expect(page.getByRole('tab', { name: 'doc.md', exact: true })).toHaveCount(0)
   await expect(page.locator('.document-name')).toHaveText('未命名.md')
-  await page.keyboard.press('Control+Shift+T')
+  await page.keyboard.press('ControlOrMeta+Shift+T')
   await expect(page.getByRole('tab', { name: 'doc.md', exact: true })).toHaveAttribute('aria-selected', 'true')
   await page.getByRole('button', { name: '源码', exact: true }).click()
   await expect(source).toContainText('CLOSE_CAPTURED')

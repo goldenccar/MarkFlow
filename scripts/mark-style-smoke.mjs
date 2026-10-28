@@ -1,3 +1,4 @@
+import { newDocument, showBlockInspector } from './ui-test-utils.mjs'
 import { _electron as electron, expect } from '@playwright/test'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
@@ -14,8 +15,8 @@ await writeFile(path.join(library, '样式.md'), initial)
 await writeFile(path.join(library, '公式.tex'), 'x^2 + y^2 = z^2')
 const gitBin = process.env.OOPSMD_SMOKE_EXE ? path.join(path.dirname(process.env.OOPSMD_SMOKE_EXE), 'resources', 'git', 'cmd', 'git.exe') : 'git'
 const git = (...args) => execFileSync(gitBin, args, { cwd: library, encoding: 'utf8', windowsHide: true }).trim()
-git('init', '-b', 'main'); git('config', 'user.name', 'OopsMD Mark Test'); git('config', 'user.email', 'test@example.invalid'); git('add', '.'); git('commit', '-m', 'baseline')
-const env = { ...process.env, OOPSMD_USER_DATA: path.join(temporary, 'profile') }
+git('init', '-b', 'main'); git('config', 'user.name', 'MarkFlow Mark Test'); git('config', 'user.email', 'test@example.invalid'); git('add', '.'); git('commit', '-m', 'baseline')
+const env = { ...process.env, MARKFLOW_USER_DATA: path.join(temporary, 'profile') }
 delete env.ELECTRON_RUN_AS_NODE
 const checks = [], errors = [], screenshots = []
 let app, page
@@ -48,7 +49,7 @@ async function selectParagraph(text) {
   await expect(sizeControl()).toBeEnabled()
 }
 async function save() {
-  const button = page.locator('.document-bar').getByRole('button', { name: /^保存(?: Ctrl S)?$/ })
+  const button = page.locator('.document-bar').getByRole('button', { name: /^保存(?: (?:Ctrl|⌘) S)?$/ })
   await button.click(); await expect(page.locator('.unsaved-dot')).toHaveCount(0); await expect(button).toBeEnabled()
 }
 async function live() { await page.getByRole('button', { name: '实时预览', exact: true }).click(); await expect(rich()).toBeVisible() }
@@ -61,6 +62,7 @@ async function sourceMode() {
 async function computedSize(locator, value) { await expect.poll(() => locator.evaluate(element => getComputedStyle(element).fontSize)).toBe(`${value}px`) }
 async function capture(name) { const file = path.join(temporary, `${name}.png`); await page.screenshot({ path: file, animations: 'disabled' }); screenshots.push(file) }
 async function jump(label) {
+  await showBlockInspector(page)
   await page.locator('.block-tree').getByRole('button', { name: new RegExp(`^跳转 Mark \\d+ ${label}$`) }).click()
   await expect(page.locator('.font-control')).toHaveAttribute('title', `当前 Mark：${label}`)
 }
@@ -84,8 +86,8 @@ try {
   await selectParagraph('第二段 Bravo 内容。'); await expect(sizeControl()).toHaveValue(String(defaults.fontSize)); await expect(fontControl()).toHaveValue(defaults.fontFamily)
   await sizeControl().selectOption('20'); await computedSize(paragraph('第二段 Bravo 内容。'), 20)
   await paragraph('第二段 Bravo 内容。').click(); await page.keyboard.press('ArrowRight'); await expect(rich()).toBeFocused(); await expect(sizeControl()).toHaveValue('20')
-  await page.keyboard.press('Control+z'); await computedSize(paragraph('第二段 Bravo 内容。'), defaults.fontSize)
-  await page.keyboard.press('Control+Shift+Z'); await computedSize(paragraph('第二段 Bravo 内容。'), 20)
+  await page.keyboard.press('ControlOrMeta+z'); await computedSize(paragraph('第二段 Bravo 内容。'), defaults.fontSize)
+  await page.keyboard.press('ControlOrMeta+Shift+Z'); await computedSize(paragraph('第二段 Bravo 内容。'), 20)
   await computedSize(paragraph('第一段 Alpha 内容。'), 24)
   await jump('第一段 Alpha 内容。'); await expect(sizeControl()).toHaveValue('24'); await expect(fontControl()).toHaveValue(font.id)
   await capture('independent-mark-styles')
@@ -96,7 +98,7 @@ try {
   await page.getByRole('button', { name: '对照', exact: true }).click()
   await computedSize(page.locator('.preview-pane p').filter({ hasText: '第一段 Alpha 内容。' }), 24)
   await computedSize(page.locator('.preview-pane p').filter({ hasText: '第二段 Bravo 内容。' }), 22)
-  await source().focus(); await page.keyboard.press('Control+z')
+  await source().focus(); await page.keyboard.press('ControlOrMeta+z')
   await computedSize(page.locator('.preview-pane p').filter({ hasText: '第二段 Bravo 内容。' }), 20)
   await live(); await save()
   const saved = documentParts(await readFile(path.join(library, '样式.md'), 'utf8'))
@@ -142,7 +144,7 @@ try {
   const trimmed = documentParts(await readFile(path.join(library, '资料/移动后.md'), 'utf8'))
   expect(trimmed.marks.find(mark => mark.id === bravoId).raw).toBe('第二段 Bravo 内容')
   expect(trimmed.marks.find(mark => mark.id === bravoId).style.fontSize).toBe(20)
-  await paragraph('第二段 Bravo 内容').click(); await page.keyboard.press('Control+z'); await expect(paragraph('第二段 Bravo 内容。')).toBeVisible()
+  await paragraph('第二段 Bravo 内容').click(); await page.keyboard.press('ControlOrMeta+z'); await expect(paragraph('第二段 Bravo 内容。')).toBeVisible()
   await computedSize(paragraph('第二段 Bravo 内容。'), 20)
   passed('Backspace at the end of a styled source Mark retains its identity and style, and undo restores the original text')
 
@@ -161,9 +163,9 @@ try {
   await page.getByRole('combobox', { name: '字号', exact: true }).selectOption('18')
   await expect.poll(() => page.evaluate(async () => (await window.oops.settings()).fontSize)).toBe(18)
   await expect(page.getByRole('button', { name: '恢复 Mark 默认样式', exact: true })).toHaveCount(0)
-  passed('restore-default clears only the active Mark overrides; defaults affect inherited Marks while Geek keeps global typography')
+  passed('restore-default clears only the active Mark overrides; defaults affect inherited Marks while Formula keeps global typography')
 
-  await page.getByRole('button', { name: '新建标签', exact: true }).click(); await expect(rich()).toBeVisible(); await sizeControl().selectOption('22')
+  await newDocument(page); await expect(rich()).toBeVisible(); await sizeControl().selectOption('22')
   await computedSize(rich().locator('p').first(), 22)
   await expect(page.locator('.document-name')).toHaveText('未命名.md')
   await expect(page.locator('.document-tab.active .tab-title')).toHaveText('未命名')

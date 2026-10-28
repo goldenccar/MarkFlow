@@ -90,7 +90,7 @@ export class GitService {
   }
   private async statusNow(): Promise<GitStatus> {
     const result: GitStatus = { available: false, repository: false, branch: '', remote: '', ahead: 0, behind: 0, changes: [], conflicts: [], identity: { name: '', email: '' }, blocked: null, lastSync: null }
-    try { if (!this.versionChecked) { await this.git(['--version']); this.versionChecked = true }; result.available = true } catch { result.blocked = '找不到可用的 Git。开发版请安装 Git for Windows 并重新启动 OopsMD。'; return result }
+    try { if (!this.versionChecked) { await this.git(['--version']); this.versionChecked = true }; result.available = true } catch { result.blocked = '找不到可用的 Git。请安装本机 Git 并重新启动 MarkFlow。'; return result }
     const top = await this.optional(['rev-parse', '--show-toplevel'])
     if (!top) return result
     try { await this.requireRepository(top) } catch (error) { result.blocked = cleanError(error); return result }
@@ -152,10 +152,10 @@ export class GitService {
       if (special) throw new Error(special)
       await this.identity(identity)
       if (!await this.optional(['rev-parse', '--verify', 'HEAD'])) {
-        if (await this.git(['ls-files', '--cached', '-z'])) throw new Error('仓库已有暂存内容，请先使用原 Git 工具处理；OopsMD 未更改暂存区。')
+        if (await this.git(['ls-files', '--cached', '-z'])) throw new Error('仓库已有暂存内容，请先使用原 Git 工具处理；MarkFlow 未更改暂存区。')
         const files = (await this.git(['ls-files', '--others', '--exclude-standard', '-z'])).split('\0').filter(Boolean)
         if (files.length) {
-          const result = await this.commitNow(files, 'Initialize OopsMD library')
+          const result = await this.commitNow(files, 'Initialize MarkFlow library')
           if (result.error) throw new Error(result.error)
         }
       }
@@ -274,7 +274,7 @@ export class GitService {
       await this.git(['reset', '--quiet', candidate, '--', ...selected], { index: newIndex })
       await lock.close(); lock = undefined
       await copyFile(newIndex, lockPath)
-      await this.git(['update-ref', '-m', `OopsMD: ${message.split('\n')[0]}`, 'HEAD', candidate, head || '0'.repeat(candidate.length)])
+      await this.git(['update-ref', '-m', `MarkFlow: ${message.split('\n')[0]}`, 'HEAD', candidate, head || '0'.repeat(candidate.length)])
       oid = candidate
       await rename(lockPath, indexPath)
       lockPath = ''

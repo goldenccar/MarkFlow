@@ -1,3 +1,4 @@
+import { newDocument } from './ui-test-utils.mjs'
 import { _electron as electron, expect } from '@playwright/test'
 import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -17,8 +18,8 @@ for (const folder of [plainLibrary, gitLibrary, nextLibrary]) await writeFile(pa
 const gitBin = process.env.OOPSMD_SMOKE_EXE ? path.join(path.dirname(process.env.OOPSMD_SMOKE_EXE), 'resources', 'git', 'cmd', 'git.exe') : 'git'
 const git = (...args) => execFileSync(gitBin, args, { cwd: gitLibrary, encoding: 'utf8', windowsHide: true }).trim()
 const commits = () => Number(git('rev-list', '--count', 'HEAD'))
-git('init', '-b', 'main'); git('config', 'user.name', 'OopsMD Safety Test'); git('config', 'user.email', 'test@example.invalid'); git('add', '.'); git('commit', '-m', 'baseline')
-const env = { ...process.env, OOPSMD_USER_DATA: profile }
+git('init', '-b', 'main'); git('config', 'user.name', 'MarkFlow Safety Test'); git('config', 'user.email', 'test@example.invalid'); git('add', '.'); git('commit', '-m', 'baseline')
+const env = { ...process.env, MARKFLOW_USER_DATA: profile }
 delete env.ELECTRON_RUN_AS_NODE
 const app = await electron.launch({ ...(process.env.OOPSMD_SMOKE_EXE ? { executablePath: process.env.OOPSMD_SMOKE_EXE, args: [] } : { args: [root] }), env })
 const checks = []
@@ -55,14 +56,14 @@ try {
     await expect(source).toHaveAttribute('contenteditable', 'true')
   }
   async function append(value) {
-    await source.click(); await page.keyboard.press('Control+End'); await page.keyboard.insertText(value)
+    await source.click(); await page.keyboard.press('ControlOrMeta+End'); await page.keyboard.insertText(value)
   }
   async function save() {
-    await expect(page.getByRole('button', { name: /保存.*Ctrl S/ })).toBeEnabled()
-    await source.click(); await page.keyboard.press('Control+s')
+    await expect(page.getByRole('button', { name: /^保存(?: (?:Ctrl|⌘) S)?$/ })).toBeEnabled()
+    await source.click(); await page.keyboard.press('ControlOrMeta+s')
     await expect(page.locator('.unsaved-dot')).toHaveCount(0)
     await expect(page.locator('.statusbar')).toContainText(/已保存|已记录/)
-    await expect(page.getByRole('button', { name: /保存.*Ctrl S/ })).toBeEnabled()
+    await expect(page.getByRole('button', { name: /^保存(?: (?:Ctrl|⌘) S)?$/ })).toBeEnabled()
   }
 
   await openLibrary(plainLibrary)
@@ -70,25 +71,32 @@ try {
   await save()
   await expect(page.locator('.statusbar')).toContainText('未启用版本记录')
   expect(markdownBody(await readFile(path.join(plainLibrary, 'doc.md'), 'utf8'))).toBe(initial + 'PLAIN_SAVE')
-  passed('plain file Ctrl+S succeeds without a Git repository')
+  passed('plain file primary save shortcut succeeds without a Git repository')
 
   await openLibrary(gitLibrary)
   await append('MODE_TEST')
-  await page.getByRole('button', { name: 'Geek', exact: true }).click()
-  await page.getByRole('button', { name: 'Markdown', exact: true }).click()
+  await newDocument(page, 'Formula')
+  await expect(page.locator('.rich-editor')).toHaveCount(0)
+  await source.focus(); await page.keyboard.insertText('x^2 + y^2')
+  await source.press('ControlOrMeta+z'); await expect(source).toHaveText('')
+  await source.press('ControlOrMeta+Shift+Z'); await expect(source).toHaveText('x^2 + y^2')
+  await expect.poll(async () => (await page.evaluate(() => window.oops.listUntitled())).find(draft => draft.mode === 'latex-math')?.content).toBe('x^2 + y^2')
+  await page.locator('.tree-scroll').getByRole('button', { name: 'doc.md', exact: true }).click()
+  await expect(page.locator('.document-type')).toHaveText('Markdown')
+  await expect(source).toContainText('MODE_TEST')
   await page.getByRole('button', { name: '实时预览', exact: true }).click()
   await page.getByRole('button', { name: '源码', exact: true }).click()
-  await source.click(); await page.keyboard.press('Control+z')
+  await source.click(); await page.keyboard.press('ControlOrMeta+z')
   await expect(source).not.toContainText('MODE_TEST')
-  await page.keyboard.press('Control+Shift+Z')
+  await page.keyboard.press('ControlOrMeta+Shift+Z')
   await expect(source).toContainText('MODE_TEST')
-  await page.keyboard.press('Control+z')
+  await page.keyboard.press('ControlOrMeta+z')
   await expect(source).not.toContainText('MODE_TEST')
-  await page.keyboard.press('Control+y')
+  await page.keyboard.press('ControlOrMeta+y')
   await expect(source).toContainText('MODE_TEST')
-  await page.keyboard.press('Control+z')
+  await page.keyboard.press('ControlOrMeta+z')
   await expect(source).not.toContainText('MODE_TEST')
-  passed('content mode/layout switches retain undo and both redo shortcuts')
+  passed('separate Markdown/Formula documents keep independent content and undo; layouts preserve both redo shortcuts')
 
   // Delay only the response: the real write/commit completes, then editing continues.
   await app.evaluate(({ ipcMain }) => {
@@ -104,7 +112,7 @@ try {
     })
   })
   await append('SNAPSHOT_A')
-  await page.keyboard.press('Control+s')
+  await page.keyboard.press('ControlOrMeta+s')
   await expect.poll(() => app.evaluate(() => globalThis.__safetySaveReady)).toBe(true)
   await append('\nLATER_B')
   const snapshot = await app.evaluate(() => globalThis.__safetySnapshot)
@@ -137,7 +145,7 @@ try {
   expect(commits()).toBe(5)
   passed('1200-character paste produces one complete snapshot')
 
-  await source.click(); await page.keyboard.press('Control+End')
+  await source.click(); await page.keyboard.press('ControlOrMeta+End')
   await source.dispatchEvent('compositionstart', { data: '' })
   await page.keyboard.insertText('中'.repeat(500))
   await expect(page.locator('.statusbar')).toContainText('净修改 500 / 500')

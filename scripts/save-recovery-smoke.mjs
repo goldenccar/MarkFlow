@@ -11,7 +11,7 @@ const project = path.join(temporary, '项目')
 const profile = path.join(temporary, 'profile')
 await mkdir(project)
 const target = path.join(project, 'saved.md')
-const env = { ...process.env, OOPSMD_USER_DATA: profile }
+const env = { ...process.env, MARKFLOW_USER_DATA: profile }
 delete env.ELECTRON_RUN_AS_NODE
 const app = await electron.launch({ ...(process.env.OOPSMD_SMOKE_EXE ? { executablePath: process.env.OOPSMD_SMOKE_EXE, args: [] } : { args: [root] }), env })
 let page
@@ -43,7 +43,7 @@ try {
       throw new Error('TEST_ARCHIVE_LOOKUP_FAILED_AFTER_DISK_SAVE')
     })
   }, target)
-  await page.keyboard.press('Control+s')
+  await page.keyboard.press('ControlOrMeta+s')
   await expect(page.locator('.document-name')).toHaveText('saved.md')
   await expect(page.locator('.title-path')).toHaveAttribute('title', project)
   await expect(page.locator('.document-state')).toHaveCount(0)
@@ -51,7 +51,7 @@ try {
   await expect(page.locator('.statusbar')).not.toContainText('保存失败')
   await expect(page.getByRole('alert')).toContainText('正文已写入文件')
   await expect(page.getByRole('alert')).toContainText('TEST_ARCHIVE_LOOKUP_FAILED_AFTER_DISK_SAVE')
-  await expect(page.getByRole('button', { name: '保存 Ctrl S', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: /^保存(?: (?:Ctrl|⌘) S)?$/ })).toBeEnabled()
   expect(await app.evaluate(() => globalThis.__archiveLookupFailures)).toBe(1)
   const captured = await app.evaluate(() => globalThis.__savedSnapshot)
   expect(captured).toBe(draft.content)
@@ -63,7 +63,7 @@ try {
 
   await expect(source).toHaveAttribute('contenteditable', 'true')
   await source.click()
-  await page.keyboard.press('Control+End')
+  await page.keyboard.press('ControlOrMeta+End')
   await page.keyboard.insertText('\nLATER_EDIT_RETAINED')
   await expect(source).toContainText('LATER_EDIT_RETAINED')
   await expect(page.locator('.unsaved-dot')).toBeVisible()
