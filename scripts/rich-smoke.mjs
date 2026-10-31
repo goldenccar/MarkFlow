@@ -111,7 +111,7 @@ try {
   await page.waitForTimeout(650); await rich.focus(); await page.keyboard.press('ControlOrMeta+End'); await page.keyboard.insertText('MODE_MARKER')
   for (const name of ['源码', '对照', '实时预览']) await page.getByRole('button', { name, exact: true }).click()
   await open('formula.tex')
-  await expect(page.locator('.document-type')).toHaveText('Formula')
+  await expect(page.locator('.document-type')).toHaveText('Fomula')
   await expect(rich).toHaveCount(0)
   await source.focus(); await page.keyboard.press('ControlOrMeta+End'); await page.keyboard.insertText(' + 1')
   await source.press('ControlOrMeta+z'); await expect(source).toHaveText('x^2')

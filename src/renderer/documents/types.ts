@@ -33,6 +33,7 @@ export interface DocumentEditorProps extends EditorProps {
   onError?(message: string): void
 }
 export interface DocumentPreviewProps {
+  onOpenDocument?(): void
   content: string
   mode?: ContentMode
   path: string

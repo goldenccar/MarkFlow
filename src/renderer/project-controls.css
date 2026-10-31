@@ -1,0 +1,26 @@
+.project-dialog { margin: auto; width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); overflow: auto; }
+.project-dialog::backdrop { background: #18231d48; }
+.project-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.project-dialog-heading h2 { margin: 0; }
+.project-entry-options { display: grid; gap: 8px; }
+.project-entry-options > button { min-height: 70px; padding: 12px; display: flex; align-items: center; gap: 12px; text-align: left; }
+.project-entry-options > button > span { flex: 1; display: grid; gap: 5px; }
+.project-entry-options strong { font-size: 13px; font-weight: 600; }
+.project-entry-options small, .project-match small { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.project-dialog-footer { display: flex; align-items: center; gap: 12px; margin-top: 20px; font-size: 12px; line-height: 1.6; }
+.project-link-result { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 8px; }
+.project-matches { display: grid; gap: 8px; margin-bottom: 16px; }
+.project-match { display: flex; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.project-match > div { display: grid; gap: 5px; flex: 1; min-width: 0; }
+.project-match code { font-size: 11px; white-space: normal; overflow-wrap: anywhere; }
+.project-match > button { flex-shrink: 0; }
+.project-row { position: relative; display: flex; align-items: center; }
+.project-row > .project-item { padding-right: 34px; }
+.project-row > .project-options { position: absolute; right: 3px; width: 26px; height: 26px; opacity: .55; }
+.project-row:hover > .project-options, .project-row:focus-within > .project-options { opacity: 1; }
+.project-sync-label { font-size: 10px; color: var(--muted); white-space: nowrap; }
+.project-menu-caption { display: block; padding: 8px 10px; color: var(--muted); font-size: 11px; max-width: 260px; overflow-wrap: anywhere; }
+.git-network-actions { display: grid; gap: 8px; }
+.git-check-time { display: block; font-size: 11px; color: var(--muted); line-height: 1.7; overflow-wrap: anywhere; }
+.git-network-actions + p { margin-top: 10px; }
+@media (max-width: 640px) { .project-dialog { padding: 20px; } .project-match { flex-wrap: wrap; } }

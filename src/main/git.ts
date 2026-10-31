@@ -1,12 +1,17 @@
 import { execFile } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
-import { copyFile, lstat, open, readFile, realpath, rename, rm, stat } from 'node:fs/promises'
+import { createHash, randomUUID } from 'node:crypto'
+import { copyFile, lstat, mkdir, open, readFile, realpath, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { GitCommitResult, GitStatus, HistoryEntry } from '../shared/types'
+import { normalizeGithubRemote } from '../shared/github'
 
 type Identity = { name: string; email: string }
 const queues = new Map<string, Promise<unknown>>()
-const githubRemote = /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?\/?$/
+const remoteQueues = new Map<string, Promise<unknown>>()
+const remoteCheckMaxAge = 5 * 60_000
+type RemoteBinding = { remote: string; branch: string; trackingBranch: string }
+type RemoteCheck = RemoteBinding & { checkedAt: string | null; error: string | null }
+const remoteFingerprint = (binding: RemoteBinding) => ({ ...binding, remote: createHash('sha256').update(binding.remote).digest('hex') })
 const cleanError = (error: unknown) => String(error instanceof Error ? error.message : error)
   .replace(/(https?:\/\/)[^/\s@]+@/gi, '$1[redacted]@').slice(0, 4000)
 const samePath = (a: string, b: string) => process.platform === 'win32'
@@ -19,12 +24,33 @@ export class GitService {
   private versionChecked = false
   constructor(root: string, private readonly binary = 'git') { this.root = path.resolve(root) }
 
-  private async serial<T>(task: () => Promise<T>): Promise<T> {
+  static async clone(remote: string, destination: string, binary = 'git'): Promise<void> {
+    const source = path.isAbsolute(remote) ? remote : normalizeGithubRemote(remote).url
+    if (!path.isAbsolute(destination)) throw new Error('请选择新副本的完整本地路径。')
+    const target = path.resolve(destination)
+    const parent = await realpath(path.dirname(target))
+    if (target === path.parse(target).root) throw new Error('不能将磁盘根目录用作新副本。')
+    // Exclusive creation owns only this new directory; failed downloads are retained, never recursively removed.
+    try { await mkdir(target) } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new Error('目标路径已存在，请选择尚不存在的新文件夹；原有内容未改动。')
+      throw error
+    }
+    try {
+      await new GitService(parent, binary).git(['-c', `protocol.file.allow=${path.isAbsolute(source) ? 'always' : 'never'}`, 'clone', '--no-checkout', '--no-recurse-submodules', '--template=', '--', source, target], { network: true })
+      const service = new GitService(target, binary)
+      if (await service.optional(['rev-parse', '--verify', 'HEAD'])) {
+        await service.worktreeGit(['read-tree', '-m', '-u', 'HEAD'])
+      }
+      await service.recordRemoteCheck(await service.binding(), null)
+    } catch (error) { throw new Error(`获取项目失败。未完成的副本保留在 ${target}；已有文件夹未被覆盖。\n${cleanError(error)}`) }
+  }
+
+  private async serial<T>(task: () => Promise<T>, pending = queues): Promise<T> {
     const canonical = await realpath(this.root).catch(() => this.root)
     const key = process.platform === 'win32' ? canonical.toLowerCase() : canonical
-    const result = (queues.get(key) ?? Promise.resolve()).catch(() => {}).then(task)
-    queues.set(key, result)
-    void result.finally(() => { if (queues.get(key) === result) queues.delete(key) }).catch(() => {})
+    const result = (pending.get(key) ?? Promise.resolve()).catch(() => {}).then(task)
+    pending.set(key, result)
+    void result.finally(() => { if (pending.get(key) === result) pending.delete(key) }).catch(() => {})
     return result
   }
 
@@ -35,7 +61,9 @@ export class GitService {
     }
     if (options.index) Object.assign(env, { GIT_INDEX_FILE: options.index })
     return new Promise((resolve, reject) => {
-      const child = execFile(this.binary, [...(options.literalPathspecs === false ? [] : ['--literal-pathspecs']), '-c', 'core.quotepath=false', ...(options.index ? ['-c', 'core.ignorecase=false'] : []), ...args], {
+      const child = execFile(this.binary, [...(options.literalPathspecs === false ? [] : ['--literal-pathspecs']), '-c', 'core.quotepath=false', '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', '-c', 'commit.gpgSign=false',
+        ...(options.network ? ['-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always', '-c', 'protocol.ssh.allow=always', '-c', 'protocol.file.allow=always', '-c', 'remote.origin.uploadpack=git-upload-pack', '-c', 'remote.origin.receivepack=git-receive-pack'] : []),
+        ...(options.index ? ['-c', 'core.ignorecase=false'] : []), ...args], {
         cwd: this.root, env, windowsHide: true, encoding: 'buffer', maxBuffer: 32 * 1024 * 1024,
         timeout: options.network ? 120_000 : 30_000,
       }, (error, stdout, stderr) => {
@@ -48,6 +76,12 @@ export class GitService {
   }
   private async git(args: string[], options?: Parameters<GitService['run']>[1]) { return (await this.run(args, options)).toString('utf8').trimEnd() }
   private async optional(args: string[]) { try { return await this.git(args) } catch { return '' } }
+  private async worktreeRun(args: string[], options?: Parameters<GitService['run']>[1]) {
+    const keys = (await this.optional(['config', '--name-only', '--get-regexp', String.raw`^(filter\..*\.(clean|smudge|process|required)|merge\..*\.driver)$`])).split('\n').filter(Boolean)
+    const overrides = keys.flatMap(key => ['-c', `${key}=${key.endsWith('.required') ? 'false' : key.startsWith('merge.') ? 'false' : ''}`])
+    return this.run([...overrides, ...args], options)
+  }
+  private async worktreeGit(args: string[], options?: Parameters<GitService['run']>[1]) { return (await this.worktreeRun(args, options)).toString('utf8').trimEnd() }
   private async gitDir() { return path.resolve(this.root, await this.git(['rev-parse', '--absolute-git-dir'])) }
   private async requireRepository(knownTop?: string) {
     const top = knownTop ?? await this.git(['rev-parse', '--show-toplevel'])
@@ -88,8 +122,53 @@ export class GitService {
     await this.git(['config', '--local', 'user.name', identity.name.trim()])
     await this.git(['config', '--local', 'user.email', identity.email.trim()])
   }
+  private async binding(known?: Pick<RemoteBinding, 'branch' | 'remote'>): Promise<RemoteBinding> {
+    const branch = known?.branch ?? await this.optional(['symbolic-ref', '--quiet', '--short', 'HEAD'])
+    const [remote, trackingRemote, merge] = await Promise.all([
+      known?.remote ?? this.optional(['remote', 'get-url', 'origin']),
+      branch ? this.optional(['config', `branch.${branch}.remote`]) : '',
+      branch ? this.optional(['config', `branch.${branch}.merge`]) : '',
+    ])
+    return { remote, branch, trackingBranch: (!trackingRemote || trackingRemote === 'origin') ? (merge.startsWith('refs/heads/') ? merge.slice(11) : branch) : '' }
+  }
+  private sameBinding(a: RemoteBinding, b: RemoteBinding) { return a.remote === b.remote && a.branch === b.branch && a.trackingBranch === b.trackingBranch }
+  private async remoteCheck(binding: RemoteBinding): Promise<RemoteCheck | null> {
+    try {
+      const value = JSON.parse(await this.optional(['config', '--local', 'markflow.remoteCheck'])) as RemoteCheck
+      return this.sameBinding(value, remoteFingerprint(binding)) && (value.checkedAt === null || typeof value.checkedAt === 'string') && (value.error === null || typeof value.error === 'string') ? value : null
+    } catch { return null }
+  }
+  private async recordRemoteCheck(binding: RemoteBinding, error: string | null) {
+    const previous = error ? await this.remoteCheck(binding) : null
+    const value: RemoteCheck = { ...remoteFingerprint(binding), checkedAt: error ? previous?.checkedAt ?? null : new Date().toISOString(), error }
+    await this.git(['config', '--local', 'markflow.remoteCheck', JSON.stringify(value)])
+  }
+  private async validateRemote(binding: RemoteBinding, push = false) {
+    if (!binding.remote) throw new Error('请先连接 GitHub 仓库。')
+    if (!binding.branch || !binding.trackingBranch) throw new Error('请先选择本地分支，并绑定 origin 的远端分支。')
+    if (!path.isAbsolute(binding.remote)) normalizeGithubRemote(binding.remote)
+    await this.git(['check-ref-format', `refs/heads/${binding.trackingBranch}`])
+    if (push) {
+      const remotes = (await this.git(['remote', 'get-url', '--push', '--all', 'origin'])).split('\n')
+      if (remotes.length !== 1 || remotes[0] !== binding.remote) throw new Error('推送地址与显示的仓库地址不同。请重新保存仓库配置后再上传。')
+    }
+  }
+  private async fetchNow(): Promise<GitStatus> {
+    await this.requireRepository()
+    const binding = await this.binding()
+    try {
+      await this.validateRemote(binding)
+      await this.git(['fetch', '--prune', '--no-prune-tags', '--no-tags', '--no-recurse-submodules', '--refmap=', binding.remote, '+refs/heads/*:refs/remotes/origin/*'], { network: true })
+      if (!this.sameBinding(binding, await this.binding())) throw new Error('下载期间仓库分支或远端配置发生变化，已停止后续操作。')
+      await this.recordRemoteCheck(binding, null)
+    } catch (error) {
+      if (this.sameBinding(binding, await this.binding())) await this.recordRemoteCheck(binding, cleanError(error))
+      throw error
+    }
+    return this.statusNow()
+  }
   private async statusNow(): Promise<GitStatus> {
-    const result: GitStatus = { available: false, repository: false, branch: '', remote: '', ahead: 0, behind: 0, changes: [], conflicts: [], identity: { name: '', email: '' }, blocked: null, lastSync: null }
+    const result: GitStatus = { available: false, repository: false, branch: '', remote: '', ahead: 0, behind: 0, changes: [], conflicts: [], identity: { name: '', email: '' }, blocked: null, lastSync: null, checkedAt: null, remoteState: 'unconfigured', remoteError: null, trackingBranch: '' }
     try { if (!this.versionChecked) { await this.git(['--version']); this.versionChecked = true }; result.available = true } catch { result.blocked = '找不到可用的 Git。请安装本机 Git 并重新启动 MarkFlow。'; return result }
     const top = await this.optional(['rev-parse', '--show-toplevel'])
     if (!top) return result
@@ -100,7 +179,7 @@ export class GitService {
       this.optional(['remote', 'get-url', 'origin']),
       this.optional(['config', '--null', '--get-regexp', '^user\\.(name|email)$']),
       this.optional(['config', '--local', 'oopsmd.lastSync']),
-      this.run(['-c', 'core.ignorecase=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all']),
+      this.worktreeRun(['-c', 'core.ignorecase=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all']),
       this.specialState(),
     ])
     result.branch = branch
@@ -130,18 +209,29 @@ export class GitService {
     if (!result.blocked && result.conflicts.length) result.blocked = '仓库存在未解决的冲突，请先处理冲突。'
     if (!result.blocked && !result.branch) result.blocked = '仓库处于 detached HEAD；请先切换到分支。'
     if (!result.blocked && (!result.identity.name || !result.identity.email)) result.blocked = '尚未配置 Git 作者姓名和邮箱。'
-    const upstream = `refs/remotes/origin/${result.branch}`
+    const binding = await this.binding({ branch, remote })
+    result.trackingBranch = binding.trackingBranch
+    if (!binding.remote) return result
+    const check = await this.remoteCheck(binding)
+    result.checkedAt = check?.checkedAt ?? null
+    result.remoteError = check?.error ?? null
+    const age = check?.checkedAt ? Date.now() - Date.parse(check.checkedAt) : NaN
+    result.remoteState = check?.error ? 'unavailable' : age >= 0 && age < remoteCheckMaxAge ? 'current' : 'unchecked'
+    if (result.remoteState === 'unchecked' || result.remoteState === 'unavailable') return result
+    const upstream = `refs/remotes/origin/${binding.trackingBranch}`
+    const target = await this.optional(['rev-parse', '--verify', upstream])
+    if (!target) { result.remoteState = 'missing-branch'; return result }
+    const head = await this.optional(['rev-parse', '--verify', 'HEAD'])
+    if (!head) { result.behind = Number(await this.git(['rev-list', '--count', upstream])); result.remoteState = 'behind'; return result }
     const counts = await this.optional(['rev-list', '--left-right', '--count', `HEAD...${upstream}`])
     if (counts) [result.ahead, result.behind] = counts.split(/\s+/).map(Number)
-    else result.ahead = Number(await this.optional(['rev-list', '--count', 'HEAD'])) || 0
+    result.remoteState = result.ahead && result.behind ? await this.optional(['merge-base', 'HEAD', upstream]) ? 'diverged' : 'unrelated' : result.ahead ? 'ahead' : result.behind ? 'behind' : 'current'
     return result
   }
 
-  status() { return this.serial(() => this.statusNow()) }
+  status() { return this.statusNow() }
 
-  hasRepository(): Promise<boolean> {
-    return this.serial(async () => { try { await this.requireRepository(); return true } catch { return false } })
-  }
+  async hasRepository(): Promise<boolean> { try { await this.requireRepository(); return true } catch { return false } }
 
   init(identity: Identity): Promise<GitStatus> {
     return this.serial(async () => {
@@ -168,25 +258,21 @@ export class GitService {
       await this.requireRepository()
       const special = await this.specialState()
       if (special) throw new Error(special)
-      const remoteValue = remote.trim()
-      if (!githubRemote.test(remoteValue)) throw new Error('请输入 GitHub HTTPS 或 SSH 仓库地址；地址中不能包含密码或令牌。')
+      const remoteValue = normalizeGithubRemote(remote).url
       if (!branch || branch.startsWith('-') || /[\0\r\n]/.test(branch)) throw new Error('无效的 Git 分支名称。')
       await this.git(['check-ref-format', '--branch', branch])
       const current = await this.optional(['symbolic-ref', '--quiet', '--short', 'HEAD'])
-      if (current !== branch) {
-        if ((await this.statusNow()).changes.length) throw new Error('切换连接分支前，请先记录或处理全部本地文件变更。')
-        if (!await this.optional(['rev-parse', '--verify', 'HEAD'])) await this.git(['symbolic-ref', 'HEAD', `refs/heads/${branch}`])
-        else if (await this.optional(['rev-parse', '--verify', `refs/heads/${branch}`])) await this.git(['switch', branch])
-        else await this.git(['switch', '-c', branch])
-      }
+      if (!current) throw new Error('请先在 Git 工具中切换到本地分支，再配置远端。')
+      const before = await this.binding()
       await this.identity(identity)
       if (await this.optional(['remote', 'get-url', 'origin'])) await this.git(['remote', 'set-url', 'origin', remoteValue])
       else await this.git(['remote', 'add', 'origin', remoteValue])
       // An old pushurl must not silently send a newly configured library to a different repository.
       await this.git(['config', '--local', '--replace-all', 'remote.origin.url', remoteValue])
       await this.git(['config', '--local', '--replace-all', 'remote.origin.pushurl', remoteValue])
-      await this.git(['config', '--local', `branch.${branch}.remote`, 'origin'])
-      await this.git(['config', '--local', `branch.${branch}.merge`, `refs/heads/${branch}`])
+      await this.git(['config', '--local', `branch.${current}.remote`, 'origin'])
+      await this.git(['config', '--local', `branch.${current}.merge`, `refs/heads/${branch}`])
+      if (!this.sameBinding(before, await this.binding())) await this.optional(['config', '--local', '--unset-all', 'markflow.remoteCheck'])
       return this.statusNow()
     })
   }
@@ -261,7 +347,7 @@ export class GitService {
         if (wanted !== undefined && (content === null || !content.equals(Buffer.isBuffer(wanted) ? wanted : Buffer.from(wanted)))) throw new Error(`文件在保存后被外部修改，未记录版本：${file}`)
         if (content === null) await this.git(['update-index', '--force-remove', '--', file], { index: snapshotIndex })
         else {
-          const blob = await this.git(['hash-object', '-w', `--path=${file}`, '--stdin'], { input: content })
+          const blob = await this.worktreeGit(['hash-object', '-w', `--path=${file}`, '--stdin'], { input: content })
           const entry = await this.git(['ls-files', '--stage', '--', file], { index: snapshotIndex })
           const mode = entry.startsWith('100755 ') ? '100755' : '100644'
           await this.git(['update-index', '--add', '--cacheinfo', mode, blob, file], { index: snapshotIndex })
@@ -314,41 +400,87 @@ export class GitService {
     })
   }
 
-  sync(): Promise<GitStatus> {
+  checkRemote(): Promise<GitStatus> {
     return this.serial(async () => {
-      await this.requireRepository()
-      const state = await this.statusNow()
-      if (state.blocked) throw new Error(state.blocked)
-      if (state.changes.length) throw new Error('同步前请先记录或处理全部工作区和暂存区变更；未跟踪文件也需要处理。')
-      if (!state.remote) throw new Error('请先连接 GitHub 仓库。')
-      // No remote helpers, command URLs, or embedded credentials; local remotes allow offline round-trip tests.
-      const remote = await this.git(['remote', 'get-url', 'origin'])
-      if (!githubRemote.test(remote) && !path.isAbsolute(remote)) throw new Error('仅支持 GitHub 地址或已有的本地 Git 远端。')
-      const pushRemotes = (await this.git(['remote', 'get-url', '--push', '--all', 'origin'])).split('\n')
-      if (pushRemotes.length !== 1 || pushRemotes[0] !== remote) throw new Error('推送地址与显示的仓库地址不同。请重新保存仓库配置后再同步。')
-      await this.git(['fetch', '--prune', '--no-prune-tags', '--no-tags', '--no-recurse-submodules', '--refmap=', 'origin', '+refs/heads/*:refs/remotes/origin/*'], { network: true })
-      const fetched = await this.statusNow()
-      if (fetched.branch !== state.branch || fetched.blocked) throw new Error('下载期间仓库分支或操作状态发生变化，已停止合并和推送。')
-      if (fetched.changes.length) throw new Error('下载期间出现新的本地修改，已停止合并和推送。请先保存并记录这些修改。')
-      const target = `refs/remotes/origin/${state.branch}`
-      if (await this.optional(['rev-parse', '--verify', target])) {
-        try { await this.git(['-c', `branch.${state.branch}.mergeOptions=`, 'merge', '--no-autostash', '--ff', '--no-edit', target]) } catch (error) {
-          if ((await this.statusNow()).conflicts.length) return this.statusNow()
-          throw error
-        }
+      try { return await this.fetchNow() } catch (error) {
+        const state = await this.statusNow()
+        return { ...state, remoteState: 'unavailable', remoteError: cleanError(error) }
       }
-      if (!await this.optional(['rev-parse', '--verify', 'HEAD'])) throw new Error('本地与远端均无版本；请先保存并记录一个文档。')
-      await this.git(['-c', 'remote.origin.mirror=false', 'push', '--no-force', '--no-mirror', '--set-upstream', 'origin', `refs/heads/${state.branch}:refs/heads/${state.branch}`], { network: true })
+    }, remoteQueues)
+  }
+
+  private async requireCleanUpdate(state: GitStatus) {
+    const special = await this.specialState()
+    if (special) throw new Error(special)
+    if (!state.branch) throw new Error('请先切换到本地分支。')
+    if (state.changes.length) throw new Error('更新前请先记录或处理全部工作区和暂存区变更；未跟踪文件也需要处理。')
+  }
+  private async updateNow(): Promise<GitStatus> {
+    await this.requireRepository()
+    const before = await this.statusNow()
+    await this.requireCleanUpdate(before)
+    const head = await this.optional(['rev-parse', '--verify', 'HEAD'])
+    const state = await this.fetchNow()
+    if (state.branch !== before.branch || await this.specialState() || head !== await this.optional(['rev-parse', '--verify', 'HEAD'])) throw new Error('下载期间本地分支或版本发生变化，已停止更新。')
+    if (state.changes.length) throw new Error('下载期间出现新的本地修改，已停止更新。请先保护并记录这些修改。')
+    if (state.remoteState === 'missing-branch') throw new Error('远端分支不存在；未更新本地，也未重新发布分支。')
+    if (state.remoteState === 'unrelated') throw new Error('本地与远端没有共同历史。请获取独立副本后手动迁移内容；不会拼接或覆盖两边历史。')
+    if (!state.behind) return state
+    if (state.ahead && (!state.identity.name || !state.identity.email)) throw new Error('合并两个分支前，请配置 Git 作者姓名和邮箱。')
+    const target = await this.git(['rev-parse', '--verify', `refs/remotes/origin/${state.trackingBranch}`])
+    try { await this.worktreeGit(['-c', `branch.${state.branch}.mergeOptions=`, 'merge', '--no-autostash', '--ff', '--no-edit', target]) } catch (error) {
+      if ((await this.statusNow()).conflicts.length) return this.statusNow()
+      throw error
+    }
+    return this.statusNow()
+  }
+  updateFromRemote(): Promise<GitStatus> { return this.serial(() => this.serial(() => this.updateNow()), remoteQueues) }
+
+  private async pushNow(publish: boolean): Promise<GitStatus> {
+    await this.requireRepository()
+    const special = await this.specialState()
+    if (special) throw new Error(special)
+    const binding = await this.binding()
+    await this.validateRemote(binding, true)
+    const state = await this.fetchNow()
+    if (!this.sameBinding(binding, await this.binding()) || await this.specialState()) throw new Error('检查期间分支或仓库状态发生变化，已停止上传。')
+    const head = await this.optional(['rev-parse', '--verify', 'HEAD'])
+    if (!head) throw new Error('本地尚无版本；请先保存并记录一个文档。')
+    const ref = `refs/heads/${binding.trackingBranch}`
+    const target = await this.optional(['rev-parse', '--verify', `refs/remotes/origin/${binding.trackingBranch}`])
+    if (publish && target) throw new Error('远端分支已存在，请检查更新后使用上传；不会覆盖现有分支。')
+    if (!publish && !target) throw new Error('远端分支不存在；上传已停止。如需创建，请明确选择发布新分支。')
+    if (target && await this.optional(['merge-base', head, target]) !== target) throw new Error(state.remoteState === 'unrelated' ? '本地与远端没有共同历史，不能上传覆盖。' : '远端有本地尚未包含的版本，请先更新本地并处理合并。')
+    try {
+      // The ancestry check forbids history replacement; the explicit lease also rejects a deleted or raced branch.
+      await this.git(['-c', 'remote.origin.mirror=false', 'push', '--no-force', '--no-mirror', '--no-follow-tags', '--recurse-submodules=no', `--force-with-lease=${ref}:${target}`, binding.remote, `${head}:${ref}`], { network: true })
+      if (!this.sameBinding(binding, await this.binding())) throw new Error('版本已上传到检查时的远端，但上传期间项目配置发生变化，请重新检查当前来源。')
+      await this.git(['update-ref', `refs/remotes/origin/${binding.trackingBranch}`, head])
+      await this.git(['config', '--local', `branch.${binding.branch}.remote`, 'origin'])
+      await this.git(['config', '--local', `branch.${binding.branch}.merge`, ref])
+      await this.recordRemoteCheck(binding, null)
       await this.git(['config', '--local', 'oopsmd.lastSync', new Date().toISOString()])
-      return this.statusNow()
-    })
+    } catch (error) {
+      if (this.sameBinding(binding, await this.binding())) await this.recordRemoteCheck(binding, cleanError(error))
+      throw error
+    }
+    return this.statusNow()
+  }
+  pushChanges(): Promise<GitStatus> { return this.serial(() => this.serial(() => this.pushNow(false)), remoteQueues) }
+  publishBranch(): Promise<GitStatus> { return this.serial(() => this.serial(() => this.pushNow(true)), remoteQueues) }
+
+  sync(): Promise<GitStatus> {
+    return this.serial(() => this.serial(async () => {
+      const state = await this.updateNow()
+      return state.conflicts.length ? state : this.pushNow(false)
+    }), remoteQueues)
   }
 
   abortMerge(): Promise<GitStatus> {
     return this.serial(async () => {
       await this.requireRepository()
       if (!await exists(path.join(await this.gitDir(), 'MERGE_HEAD'))) throw new Error('当前没有可以中止的合并。')
-      await this.git(['merge', '--abort'])
+      await this.worktreeGit(['merge', '--abort'])
       return this.statusNow()
     })
   }
@@ -362,8 +494,8 @@ export class GitService {
       const stage = choice === 'ours' ? '2' : '3'
       const entries = (await this.git(['ls-files', '--unmerged', '--', filename])).split('\n')
       if (entries.some(entry => entry.split('\t')[0].endsWith(` ${stage}`))) {
-        await this.git(['checkout', `--${choice}`, '--', filename])
-        await this.git(['add', '--', filename])
+        await this.worktreeGit(['checkout', `--${choice}`, '--', filename])
+        await this.worktreeGit(['add', '--', filename])
       } else await this.git(['rm', '--force', '--', filename])
       return this.statusNow()
     })

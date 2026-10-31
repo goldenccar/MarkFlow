@@ -1,0 +1,353 @@
+{
+  "format": "markflow",
+  "version": 1,
+  "documentId": "e1c2bf3a-0909-4f01-9b78-ff5ac1d5795a",
+  "revision": 1,
+  "marks": [
+    {
+      "id": "report-title",
+      "content": {
+        "kind": "heading",
+        "level": 1,
+        "runs": [
+          {
+            "text": "青屿记录｜试运行简报"
+          }
+        ]
+      },
+      "style": {
+        "fontFamily": "Microsoft YaHei"
+      },
+      "source": {
+        "file": "examples/compiler/content.json",
+        "pointer": "/marks/0"
+      }
+    },
+    {
+      "id": "project-subtitle",
+      "content": {
+        "kind": "paragraph",
+        "runs": [
+          {
+            "text": "虚构项目 · 同一份事实，两种可编辑输出"
+          }
+        ]
+      },
+      "style": {
+        "fontFamily": "Microsoft YaHei"
+      },
+      "source": {
+        "file": "examples/compiler/content.json",
+        "pointer": "/marks/1"
+      }
+    },
+    {
+      "id": "fact-coverage",
+      "content": {
+        "kind": "paragraph",
+        "runs": [
+          {
+            "text": "本次虚构试点覆盖 "
+          },
+          {
+            "text": "12 个城市",
+            "format": {
+              "bold": true
+            }
+          },
+          {
+            "text": "，累计完成 24 次检查。"
+          }
+        ]
+      },
+      "style": {
+        "fontFamily": "Microsoft YaHei"
+      },
+      "source": {
+        "file": "examples/compiler/content.json",
+        "pointer": "/marks/2"
+      }
+    },
+    {
+      "id": "report-context",
+      "content": {
+        "kind": "paragraph",
+        "runs": [
+          {
+            "text": "青屿记录是一个虚构的工作记录项目，用于验证同一份内容能否分别生成报告和演示文稿。此次试运行把资料收集、文字复核和版面检查分开记录，避免把文件生成成功直接视为验收完成。团队先核对事实与图片来源，再检查中文换行、表格边界和页码，最后在办公软件中修改并重新打开文件。样例里的城市、次数和进度均为测试数据，不对应真实机构，也不构成业务成果证明。"
+          }
+        ]
+      },
+      "style": {
+        "fontFamily": "Microsoft YaHei"
+      },
+      "source": {
+        "file": "examples/compiler/content.json",
+        "pointer": "/marks/3"
+      }
+    },
+    {
+      "id": "review-heading",
+      "content": {
+        "kind": "heading",
+        "level": 2,
+        "runs": [
+          {
+            "text": "本轮核对重点"
+          }
+        ]
+      },
+      "style": {
+        "fontFamily": "Microsoft YaHei"
+      },
+      "source": {
+        "file": "examples/compiler/content.json",
+        "pointer": "/marks/4"
+      }
+    },
+    {
+      "id": "check-one",
+      "content": {
+        "kind": "list-item",
+        "ordered": false,
+        "runs": [
+          {
+            "text": "先核对共享事实，再分别检查报告与演示的呈现。"
+          }
+        ]
+      },
+      "style": {
+        "fontFamily": "Microsoft YaHei"
+      },
+      "source": {
+        "file": "examples/compiler/content.json",
+        "pointer": "/marks/5"
+      }
+    },
+    {
+      "id": "check-two",
+      "content": {
+        "kind": "list-item",
+        "ordered": false,
+        "runs": [
+          {
+            "text": "在办公软件中修改、保存、重开，确认对象仍可编辑。"
+          }
+        ]
+      },
+      "style": {
+        "fontFamily": "Microsoft YaHei"
+      },
+      "source": {
+        "file": "examples/compiler/content.json",
+        "pointer": "/marks/6"
+      }
+    },
+    {
+      "id": "reference-link",
+      "content": {
+        "kind": "paragraph",
+        "runs": [
+          {
+            "text": "样例说明链接："
+          },
+          {
+            "text": "example.org",
+            "format": {
+              "link": "https://example.org"
+            }
+          }
+        ]
+      },
+      "style": {
+        "fontFamily": "Microsoft YaHei"
+      },
+      "source": {
+        "file": "examples/compiler/content.json",
+        "pointer": "/marks/7"
+      }
+    },
+    {
+      "id": "image-heading",
+      "content": {
+        "kind": "heading",
+        "level": 2,
+        "runs": [
+          {
+            "text": "素材与检查记录"
+          }
+        ]
+      },
+      "style": {
+        "fontFamily": "Microsoft YaHei"
+      },
+      "source": {
+        "file": "examples/compiler/content.json",
+        "pointer": "/marks/8"
+      }
+    },
+    {
+      "id": "test-image",
+      "content": {
+        "kind": "image",
+        "assetId": "asset-test-blocks",
+        "alt": "三个不同颜色的矩形测试色块；不是统计图，也不是产品图片。",
+        "caption": "程序生成的测试色块，仅用于验证本地图片写出。"
+      },
+      "style": {
+        "fontFamily": "Microsoft YaHei"
+      },
+      "source": {
+        "file": "examples/compiler/content.json",
+        "pointer": "/marks/9"
+      }
+    },
+    {
+      "id": "image-context",
+      "content": {
+        "kind": "paragraph",
+        "runs": [
+          {
+            "text": "图片与说明保持独立对象。测试色块不代表真实数据；检查重点是图片比例、位置与替换能力。"
+          }
+        ]
+      },
+      "style": {
+        "fontFamily": "Microsoft YaHei"
+      },
+      "source": {
+        "file": "examples/compiler/content.json",
+        "pointer": "/marks/10"
+      }
+    },
+    {
+      "id": "table-heading",
+      "content": {
+        "kind": "heading",
+        "level": 2,
+        "runs": [
+          {
+            "text": "样例检查分布"
+          }
+        ]
+      },
+      "style": {
+        "fontFamily": "Microsoft YaHei"
+      },
+      "source": {
+        "file": "examples/compiler/content.json",
+        "pointer": "/marks/11"
+      }
+    },
+    {
+      "id": "status-table",
+      "content": {
+        "kind": "table",
+        "header": true,
+        "rows": [
+          [
+            [
+              {
+                "text": "检查环节"
+              }
+            ],
+            [
+              {
+                "text": "记录数量"
+              }
+            ],
+            [
+              {
+                "text": "状态"
+              }
+            ]
+          ],
+          [
+            [
+              {
+                "text": "输入"
+              }
+            ],
+            [
+              {
+                "text": "8"
+              }
+            ],
+            [
+              {
+                "text": "已检查"
+              }
+            ]
+          ],
+          [
+            [
+              {
+                "text": "排版"
+              }
+            ],
+            [
+              {
+                "text": "9"
+              }
+            ],
+            [
+              {
+                "text": "已检查"
+              }
+            ]
+          ],
+          [
+            [
+              {
+                "text": "复核"
+              }
+            ],
+            [
+              {
+                "text": "7"
+              }
+            ],
+            [
+              {
+                "text": "待调整"
+              }
+            ]
+          ]
+        ]
+      },
+      "style": {
+        "fontFamily": "Microsoft YaHei"
+      },
+      "source": {
+        "file": "examples/compiler/content.json",
+        "pointer": "/marks/12"
+      }
+    },
+    {
+      "id": "cover-title",
+      "content": {
+        "kind": "heading",
+        "level": 1,
+        "runs": [
+          {
+            "text": "青屿记录"
+          }
+        ]
+      },
+      "style": {
+        "fontFamily": "Microsoft YaHei"
+      },
+      "source": {
+        "file": "examples/compiler/content.json",
+        "pointer": "/marks/13"
+      }
+    }
+  ],
+  "assets": [
+    {
+      "id": "asset-test-blocks",
+      "path": "assets/test-blocks.png"
+    }
+  ],
+  "retiredIds": []
+}

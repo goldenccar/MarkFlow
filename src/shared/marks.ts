@@ -24,7 +24,7 @@ const parsed = new Map<string, MarkdownMark[]>()
 const structures = new Map<string, MarkdownBlock[]>()
 const prepared = new Map<string, true>()
 function structure(body: string) { return structures.get(body) ?? cache(structures, body, parseBlocks(body)) }
-/** Markdown omits interior blank paragraphs; registered zero-width Marks retain those editor nodes. */
+/** Markdown omits some blank paragraphs; exact registered zero-width Marks retain those editor nodes. */
 function documentStructure(document: MarkDocument): MarkdownBlock[] {
   const { body, metadata } = document, marks = structure(body)
   if (metadata?.bodyHash !== bodyHash(body)) return marks
@@ -34,7 +34,8 @@ function documentStructure(document: MarkDocument): MarkdownBlock[] {
     let low = 0, high = marks.length
     while (low < high) { const mid = (low + high) >>> 1; if (marks[mid].from <= entry.from) low = mid + 1; else high = mid }
     const previous = marks[low - 1], next = marks[low]
-    if (previous && (previous.to > entry.from || !/(?:\r?\n[ \t]*){2,}$/.test(body.slice(previous.to, entry.from)))) continue
+    const gap = entry.from === body.length ? /(?:\r?\n[ \t]*)+$/ : /(?:\r?\n[ \t]*){2,}$/
+    if (previous && (previous.to > entry.from || !gap.test(body.slice(previous.to, entry.from)))) continue
     if (body.slice(entry.from, next?.from ?? body.length).trim()) continue
     const line = body.slice(0, entry.from).split(/\r\n|\r|\n/).length
     empty.push({ id: `empty-${entry.from}`, type: 'empty', label: '空白 Mark', raw: '', from: entry.from, to: entry.from, line, endLine: line })

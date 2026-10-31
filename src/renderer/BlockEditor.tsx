@@ -1,11 +1,12 @@
+import { navigateMenu } from './contextMenu'
 import { memo, forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import { basicSetup } from 'codemirror'
 import { Compartment, EditorState, Prec, StateField } from '@codemirror/state'
 import { Decoration, EditorView, keymap, placeholder, type DecorationSet } from '@codemirror/view'
-import { indentWithTab } from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
 import { openSearchPanel } from '@codemirror/search'
+import { closeCompletion } from '@codemirror/autocomplete'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { Editor as RichEditor, type JSONContent } from '@tiptap/core'
 import { TextSelection } from '@tiptap/pm/state'
@@ -18,6 +19,9 @@ import type { EditorHandle, EditorProps } from './editorTypes'
 import { sourceMarkMappings } from './sourceMarkMapping'
 import { blockFormats, blockConversionReason, convertMarkdownBlock, currentBlockFormat, type BlockFormat } from './blockConversion'
 import { richHeadingIndex, richHeadingPositions, sourceHeadingIndex, sourceHeadingList } from './headingSelection'
+import { sourceCompletion } from './sourceCompletion'
+import { richCompletion } from './richCompletion'
+import { defaultCompletionSettings } from '../shared/completionSettings'
 
 export type FormatCommand = 'bold' | 'italic' | 'underline' | 'strike' | 'superscript' | 'subscript' | 'highlight'
 export interface SearchResult { count: number; index: number }
@@ -78,6 +82,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
   const [blockMenu, setBlockMenu] = useState<BlockMenu | null>(null), [affordance, setAffordance] = useState<BlockAffordance | null>(null)
   const menuRef = useRef<BlockMenu | null>(null); menuRef.current = blockMenu
   const latest = useRef(props); latest.current = props
+  const completionRules = () => latest.current.completion?.markdown ?? defaultCompletionSettings.markdown
   const runtime = useRef<Runtime | null>(null)
   const language = useRef(new Compartment()), theme = useRef(new Compartment()), editable = useRef(new Compartment()), markStyles = useRef(new Compartment())
   const flush = () => { const active = document.activeElement; if (active instanceof HTMLTextAreaElement && richHost.current?.contains(active)) active.blur() }
@@ -228,7 +233,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
   const focus = () => { const state = runtime.current; if (state) liveMode(latest.current) ? state.rich.view.focus() : state.source.focus() }
   const jump = (position: number) => {
     const state = runtime.current; if (!state) return
-    const from = Math.max(0, Math.min(position, state.history.current.value.length))
+    const from = Math.max(0, Math.min(position, readMarkDocument(state.history.current.value).body.length))
     if (liveMode(latest.current)) moveRich(state, richPosition(state, from))
     else { state.source.dispatch({ selection: { anchor: from }, effects: EditorView.scrollIntoView(from, { y: 'center' }) }); state.source.focus() }
     state.history.current.cursor = from
@@ -325,7 +330,8 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     const initialBody = readMarkDocument(initial.value).body
     const source = new EditorView({ parent: sourceHost.current!, state: EditorState.create({ doc: initialBody, selection: { anchor: Math.min(history.current.cursor, initialBody.length) }, extensions: [
       basicSetup, EditorView.lineWrapping, placeholder('开始写作…'),
-      Prec.highest(keymap.of([{ key: 'Mod-z', run: () => { historyStep(false); return true } }, { key: 'Mod-Shift-z', run: () => { historyStep(true); return true } }, { key: 'Mod-y', run: () => { historyStep(true); return true } }, { key: 'Mod-s', run: () => { latest.current.onSave(); return true } }, indentWithTab])),
+      sourceCompletion('markdown', () => { history.boundary(); if (runtime.current) runtime.current.structural = true }, completionRules),
+      Prec.highest(keymap.of([{ key: 'Mod-z', run: () => { historyStep(false); return true } }, { key: 'Mod-Shift-z', run: () => { historyStep(true); return true } }, { key: 'Mod-y', run: () => { historyStep(true); return true } }, { key: 'Mod-s', run: () => { latest.current.onSave(); return true } }])),
       language.current.of(sourceLanguage(initial)), theme.current.of(appearance(initial)), markStyles.current.of(sourceMarkStyles(initial.value, initial.mode)), editable.current.of([EditorState.readOnly.of(!!initial.readOnly), EditorView.editable.of(!initial.readOnly)]),
       EditorView.updateListener.of(update => {
         const state = runtime.current; if (!state || state.applying) return
@@ -360,7 +366,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
         scroll: (_event, view) => { latest.current.onPosition({ cursor: view.state.selection.main.head, scroll: view.scrollDOM.scrollTop }); if (menuRef.current) closeBlockMenu(); return false },
       }), EditorView.contentAttributes.of({ 'aria-label': '文档内容', spellcheck: 'false' }),
     ] }) })
-    const rich = new RichEditor({ element: richHost.current!, extensions: richExtensions(() => latest.current, () => historyStep(false), () => historyStep(true), () => latest.current.onSave()), content: base.doc, editable: !initial.readOnly,
+    const rich = new RichEditor({ element: richHost.current!, extensions: [...richExtensions(() => latest.current, () => historyStep(false), () => historyStep(true), () => latest.current.onSave()), richCompletion(() => { history.boundary(); if (runtime.current) runtime.current.structural = true }, completionRules)], content: base.doc, editable: !initial.readOnly,
       editorProps: { attributes: { 'aria-label': '文档内容', role: 'textbox', 'aria-multiline': 'true', spellcheck: 'false' }, handleDOMEvents: {
         keydown: (_view, event) => { if (runtime.current && ['Enter', 'Backspace', 'Delete'].includes(event.key)) runtime.current.structural = true; return false },
         paste: () => { if (runtime.current) runtime.current.structural = true; return false },
@@ -392,6 +398,12 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     const frame = requestAnimationFrame(() => { if (richHost.current) richHost.current.scrollTop = initial.initialPosition?.scroll ?? 0; source.scrollDOM.scrollTop = initial.initialPosition?.scroll ?? 0 })
     return () => { cancelAnimationFrame(frame); latest.current.onComposition(false); source.destroy(); rich.destroy(); runtime.current = null }
   }, [props.documentKey])
+  useEffect(() => {
+    const state = runtime.current
+    if (!state) return
+    closeCompletion(state.source)
+    state.rich.view.dispatch(state.rich.state.tr.setMeta('addToHistory', false))
+  }, [props.completion])
   useEffect(() => {
     const state = runtime.current; if (!state || state.history.current.value === props.value) return
     state.history.change({ value: props.value, cursor: Math.min(state.history.current.cursor, props.value.length) }); synchronize(state)
@@ -501,11 +513,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(funct
     </button>}
     {blockMenu && <div ref={menuHost} className="block-format-menu" role="menu" aria-label="转换内容块格式" style={{ left: blockMenu.x, top: blockMenu.y }} onKeyDown={event => {
       if (event.key === 'Tab') { event.preventDefault(); closeBlockMenu(true); return }
-      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
-      event.preventDefault()
-      const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')], index = items.indexOf(document.activeElement as HTMLButtonElement)
-      const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
-      items[next]?.focus()
+      navigateMenu(event)
     }}>
       <div className="block-format-menu-heading">转换为 <span>Esc 关闭</span></div>
       {blockFormats.map(option => {

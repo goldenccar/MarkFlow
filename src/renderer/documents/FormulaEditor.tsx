@@ -1,13 +1,16 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { Compartment, EditorState, Prec } from '@codemirror/state'
 import { EditorView, drawSelection, dropCursor, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, keymap, lineNumbers, placeholder } from '@codemirror/view'
-import { defaultKeymap, indentWithTab } from '@codemirror/commands'
+import { defaultKeymap } from '@codemirror/commands'
 import { StreamLanguage, bracketMatching, defaultHighlightStyle, indentOnInput, syntaxHighlighting } from '@codemirror/language'
 import { stex } from '@codemirror/legacy-modes/mode/stex'
 import { openSearchPanel, searchKeymap } from '@codemirror/search'
+import { closeCompletion } from '@codemirror/autocomplete'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { EditHistory } from '../editHistory'
 import type { DocumentEditorHandle, DocumentEditorProps } from './types'
+import { sourceCompletion } from '../sourceCompletion'
+import { defaultCompletionSettings } from '../../shared/completionSettings'
 
 interface Runtime { view: EditorView; history: EditHistory; applying: boolean; composing: boolean; structural: boolean; query: string; match: number }
 const histories = new Map<string, EditHistory>()
@@ -30,6 +33,8 @@ function appearance(props: DocumentEditorProps) {
 export const FormulaEditor = forwardRef<DocumentEditorHandle, DocumentEditorProps>(function FormulaEditor(props, ref) {
   const host = useRef<HTMLDivElement>(null), runtime = useRef<Runtime | null>(null), latest = useRef(props)
   latest.current = props
+  const completionEngine = () => latest.current.completionEngine ?? 'formula'
+  const completionRules = () => latest.current.completion?.[completionEngine()] ?? defaultCompletionSettings[completionEngine()]
   const theme = useRef(new Compartment()), editable = useRef(new Compartment())
   const focus = () => runtime.current?.view.focus()
   const synchronize = (state: Runtime) => {
@@ -90,7 +95,8 @@ export const FormulaEditor = forwardRef<DocumentEditorHandle, DocumentEditorProp
     const view = new EditorView({ parent: host.current!, state: EditorState.create({ doc: initial.value, selection: { anchor: Math.min(history.current.cursor, initial.value.length) }, extensions: [
       lineNumbers(), highlightSpecialChars(), drawSelection(), dropCursor(), highlightActiveLine(), highlightActiveLineGutter(), EditorView.lineWrapping,
       indentOnInput(), bracketMatching(), syntaxHighlighting(defaultHighlightStyle, { fallback: true }), StreamLanguage.define(stex), placeholder('输入 LaTeX 公式…'),
-      Prec.highest(keymap.of([{ key: 'Mod-z', run: () => { historyStep(false); return true } }, { key: 'Mod-Shift-z', run: () => { historyStep(true); return true } }, { key: 'Mod-y', run: () => { historyStep(true); return true } }, { key: 'Mod-s', run: () => { latest.current.onSave(); return true } }, indentWithTab])),
+      sourceCompletion(completionEngine, () => { history.boundary(); if (runtime.current) runtime.current.structural = true }, completionRules),
+      Prec.highest(keymap.of([{ key: 'Mod-z', run: () => { historyStep(false); return true } }, { key: 'Mod-Shift-z', run: () => { historyStep(true); return true } }, { key: 'Mod-y', run: () => { historyStep(true); return true } }, { key: 'Mod-s', run: () => { latest.current.onSave(); return true } }])),
       keymap.of([...defaultKeymap, ...searchKeymap]), theme.current.of(appearance(initial)), editable.current.of([EditorState.readOnly.of(!!initial.readOnly), EditorView.editable.of(!initial.readOnly)]),
       EditorView.updateListener.of(update => {
         const state = runtime.current
@@ -116,6 +122,7 @@ export const FormulaEditor = forwardRef<DocumentEditorHandle, DocumentEditorProp
     const frame = requestAnimationFrame(() => { view.scrollDOM.scrollTop = initial.initialPosition?.scroll ?? 0 })
     return () => { cancelAnimationFrame(frame); latest.current.onComposition(false); view.destroy(); runtime.current = null }
   }, [props.documentKey])
+  useEffect(() => { if (runtime.current) closeCompletion(runtime.current.view) }, [props.completion, props.completionEngine])
   useEffect(() => {
     const state = runtime.current
     if (!state || state.history.current.value === props.value) return

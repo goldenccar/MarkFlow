@@ -5,6 +5,7 @@ import { importMarkdown, exportMarkdown, exportMarkdownWithMap } from '../src/sh
 import { richExtensions, cleanPastedMarkSlice } from '../src/renderer/richExtensions'
 import { ensureMarkDocument, parseMarks, readMarkDocument, setMarkStyle } from '../src/shared/marks'
 import { Fragment, Slice } from '@tiptap/pm/model'
+import { parseBlocks } from '../src/shared/blocks'
 
 const schema = getSchema(richExtensions(() => ({ path: 'doc.md', onExternal() {}, onNavigate() {} }), () => {}, () => {}, () => {}))
 const normalize = (doc: JSONContent) => { const node = schema.nodeFromJSON(doc); node.check(); return node.toJSON() as JSONContent }
@@ -27,6 +28,24 @@ test('editing one paragraph retains every other block, comments and exact CRLF g
   assert.ok(result.includes('[reference][ref]'))
 })
 
+test('reused list ranges never reuse IDs/styles and invalidate when list Markdown changes', () => {
+  const source = ensureMarkDocument('- First\n- Second\n\nTail'), base = importMarkdown(source), doc = normalize(base.doc)
+  const first = exportMarkdownWithMap(doc, base), originalItems = first.marks.filter(mark => mark.itemIndex !== undefined)
+  doc.content!.at(-1)!.content![0].text = 'Changed tail'
+  const second = exportMarkdownWithMap(doc, base, first.source)
+  assert.deepEqual(second.marks.filter(mark => mark.itemIndex !== undefined), originalItems)
+  doc.content![0].content![0].attrs!.markId = 'new-copied-mark'
+  doc.content![0].content![0].attrs!.markFontSize = 24
+  const third = exportMarkdownWithMap(doc, base, second.source), copied = third.marks.find(mark => mark.itemIndex === 0)!
+  assert.equal(copied.id, 'new-copied-mark'); assert.equal(copied.style?.fontSize, 24)
+  assert.equal(parseMarks(third.source)[0].id, 'new-copied-mark')
+  doc.content![0].content![0].content![0].content![0].text = 'Longer first item'
+  const fourth = exportMarkdownWithMap(doc, base, third.source), items = fourth.marks.filter(mark => mark.itemIndex !== undefined)
+  assert.equal(body(fourth.source).slice(items[0].from, items[0].to), '- Longer first item')
+  assert.equal(body(fourth.source).slice(items[1].from, items[1].to), '- Second')
+  assert.notEqual(items[1].from, originalItems[1].from)
+})
+
 test('rich Enter/ShiftEnter produce new paragraphs and Markdown hard breaks without dropping empty blocks', () => {
   const base = importMarkdown('Alpha'), doc = normalize(base.doc)
   doc.content!.push({ type: 'paragraph', content: [] })
@@ -35,6 +54,41 @@ test('rich Enter/ShiftEnter produce new paragraphs and Markdown hard breaks with
   assert.equal(body(exportMarkdown(doc, base)), 'Alpha\n\nBeta\\\nGamma')
   doc.content!.push({ type: 'paragraph', content: [] }, { type: 'paragraph', content: [] })
   assert.equal(body(exportMarkdown(doc, base)), 'Alpha\n\nBeta\\\nGamma\n\n\n\n')
+})
+
+test('generated list ranges match the parser for nested, loose, task, empty and opaque content', () => {
+  const cases = [
+    '  * first  \n  * second\n', '9) nine\n10) ten', '- [ ] plain\n- [x] done\n- mixed',
+    '- first\n\n  second paragraph\n\n- second', '- first\n  - nested\n    - nested again\n- end',
+    '- first\n  > quoted\n  > next\n- last', '- first\n\n  ```js\n  - content\n  ```\n- last',
+    '- first\n- <unknown>keep\n- raw</unknown>', '- first\n  - child <x>raw</x>\n- last', '- first\n- second\\\n  continued', '- first\n-',
+    '- first\n- <u>under</u>', '- first\n- second\n\n  $$\n  x^2\n  $$', '- first\n- second\n\n  ---\n',
+    '- first\n- [reference][ref]\n\n[ref]: destination', '- first\n- ![alt](a.png)',
+  ]
+  for (const eol of ['\n', '\r\n']) for (const raw of cases) {
+    const source = ensureMarkDocument(raw.replaceAll('\n', eol)), base = importMarkdown(source), doc = normalize(base.doc)
+    doc.content![0].content![0].content![0].content![0].text += ' changed'
+    const output = exportMarkdownWithMap(doc, base)
+    assert.deepEqual(output.marks.map(({ from, to, type }) => ({ from, to, type })), parseBlocks(body(output.source)).map(({ from, to, type }) => ({ from, to, type })), raw)
+    assert.deepEqual(parseMarks(output.source).map(mark => mark.id), parseMarks(source).map(mark => mark.id), raw)
+  }
+  for (const text of ['space ', 'tab\t', 'newline\n', '\u3000', 'trailing\u00a0', '- literal\n+ next\n10. value\n# heading']) {
+    const base = importMarkdown('- first\n- last'), doc = normalize(base.doc)
+    doc.content![0].content![1].content![0].content![0].text = text
+    const output = exportMarkdownWithMap(doc, base)
+    assert.deepEqual(output.marks.map(({ from, to }) => ({ from, to })), parseBlocks(body(output.source)).map(({ from, to }) => ({ from, to })))
+  }
+})
+
+test('shared syntax never carries identities or content across changed documents', () => {
+  const raw = '# First\n\n- repeated\n- repeated', first = importMarkdown(ensureMarkDocument(raw))
+  const second = importMarkdown(ensureMarkDocument(raw)), changed = importMarkdown('# Second\n\n- changed\n- repeated')
+  assert.equal(first.source, raw); assert.equal(second.source, raw)
+  assert.notDeepEqual(first.markMappings.map(mark => mark.id), second.markMappings.map(mark => mark.id))
+  assert.equal(changed.doc.content![0].content![0].text, 'Second')
+  parseBlocks('x'.repeat(70_000))
+  assert.equal(importMarkdown(first.identitySource).source, raw)
+  assert.equal(exportMarkdown(normalize(first.doc), first), first.originalSource)
 })
 
 test('first typing in an empty document and trailing empty paragraphs is safe and lossless', () => {

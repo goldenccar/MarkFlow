@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="580" viewBox="0 0 1600 580" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">MarkFlow 工作流：从资料，到交付。</title>
+  <desc id="desc">产品流程示意：第一步编写资料，第二步选择报告章节或演示页面的呈现方式，第三步生成可编辑 DOCX 与 PPTX。修改一处共享事实，重新生成后报告和演示一起更新。</desc>
+  <defs>
+    <style>
+      text { font-family: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+      .ink { fill: #173f35; } .muted { fill: #64776e; }
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M2 1 6 5 2 9" stroke="#7c9485" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  </defs>
+  <rect width="1600" height="580" rx="28" fill="#f5f6f3"/>
+  <text x="64" y="64" fill="#365f55" font-size="17" font-weight="650" letter-spacing="2">MARKFLOW / WORKFLOW</text>
+  <circle cx="1374" cy="57" r="4" fill="#d58a58"/>
+  <text x="1389" y="64" class="muted" font-size="18">产品流程示意</text>
+  <text x="64" y="141" class="ink" font-size="55" font-weight="700" letter-spacing="-1.4">从资料，到交付。</text>
+  <text x="67" y="186" class="muted" font-size="25">内容写一次，呈现各有章法。</text>
+
+  <path d="M518 334H565" stroke="#7c9485" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <path d="M1034 334H1081" stroke="#7c9485" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <rect x="64" y="236" width="440" height="194" rx="22" fill="#fff" stroke="#dbe3dc" stroke-width="1.5"/>
+  <text x="96" y="280" fill="#789284" font-size="18" font-weight="650" letter-spacing="1">01</text>
+  <path d="M435 263h20l9 9v29h-29zM455 263v9h9m-22 10h15m-15 8h11" stroke="#789284" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="96" y="329" class="ink" font-size="33" font-weight="650">编写资料</text>
+  <text x="96" y="369" class="muted" font-size="22">写下事实、重点和资源。</text>
+  <text x="96" y="402" class="muted" font-size="18">Markdown 或结构化输入</text>
+
+  <rect x="580" y="236" width="440" height="194" rx="22" fill="#fff" stroke="#dbe3dc" stroke-width="1.5"/>
+  <text x="612" y="280" fill="#789284" font-size="18" font-weight="650" letter-spacing="1">02</text>
+  <path d="M951 263h29v36h-29zm0 11h29m-18 0v25" stroke="#789284" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="612" y="329" class="ink" font-size="33" font-weight="650">选择呈现</text>
+  <text x="612" y="369" class="muted" font-size="22">报告用章节，演示用页面。</text>
+  <text x="612" y="402" class="muted" font-size="18">各自组织，共享事实</text>
+
+  <rect x="1096" y="236" width="440" height="194" rx="22" fill="#173f35"/>
+  <text x="1128" y="280" fill="#b8cec0" font-size="18" font-weight="650" letter-spacing="1">03</text>
+  <path d="M1484 261v23m-8-8 8 8 8-8m-21 16v8h26v-8" stroke="#c9ded0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="1128" y="329" fill="#fff" font-size="33" font-weight="650">生成可编辑文件</text>
+  <rect x="1128" y="356" width="104" height="40" rx="9" fill="#365f55"/>
+  <text x="1149" y="383" fill="#fff" font-size="20" font-weight="650">DOCX</text>
+  <rect x="1248" y="356" width="104" height="40" rx="9" fill="#365f55"/>
+  <text x="1270" y="383" fill="#fff" font-size="20" font-weight="650">PPTX</text>
+
+  <rect x="64" y="470" width="1472" height="66" rx="18" fill="#e1eae3"/>
+  <circle cx="100" cy="503" r="6" fill="#d58a58"/>
+  <text x="124" y="512" class="ink" font-size="23" font-weight="600">修改同一处事实</text>
+  <path d="M410 503H484" stroke="#7c9485" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="516" y="512" fill="#365f55" font-size="23">重新生成</text>
+  <path d="M681 503H755" stroke="#7c9485" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M802 487h18l7 7v25h-25zm18 0v7h7m19-3h30v22h-30zm10 27h10" stroke="#365f55" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="905" y="512" class="ink" font-size="23" font-weight="600">报告与演示一起更新</text>
+</svg>

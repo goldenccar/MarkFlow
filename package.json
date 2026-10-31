@@ -7,7 +7,8 @@
   "license": "MIT",
   "type": "module",
   "overrides": {
-    "katex": "$katex"
+    "katex": "$katex",
+    "image-size": "2.0.4"
   },
   "main": "out/main/index.js",
   "engines": {
@@ -20,10 +21,23 @@
     "build": "npm run typecheck && electron-vite build",
     "start": "electron-vite preview",
     "test": "tsx --test tests/*.test.ts tests/*.test.tsx",
+    "compile": "tsx src/compiler/cli.ts",
+    "test:compiler": "tsx --test tests/compiler-*.test.ts",
+    "test:paper": "tsx --test tests/paper-*.test.ts",
+    "test:paper:native": "tsx scripts/paper-runtime-smoke.ts",
+    "test:paper:desktop": "node scripts/paper-desktop-smoke.mjs",
+    "compiler:demo": "tsx scripts/compiler-demo.ts",
     "test:smoke": "node scripts/smoke.mjs",
     "test:safety": "node scripts/safety-smoke.mjs",
     "test:dev": "node scripts/dev-smoke.mjs",
     "prepare:git": "node scripts/prepare-git.mjs",
+    "prepare:tex": "node scripts/prepare-tex.mjs",
+    "package:tex": "tsx scripts/package-tex.ts",
+    "test:paper:mark": "tsx scripts/paper-mark-smoke.ts",
+    "test:paper:mac": "node scripts/paper-macos-acceptance.mjs",
+    "pack:paper": "npm run build && node scripts/check-git.mjs && node scripts/check-tex.mjs && electron-builder --config scripts/electron-builder-paper.cjs --dir --win --x64",
+    "dist:paper": "npm run build && node scripts/check-git.mjs && node scripts/check-tex.mjs && electron-builder --config scripts/electron-builder-paper.cjs --win nsis --x64",
+    "pack:mac": "npm run build && node scripts/check-tex.mjs && electron-builder --config scripts/electron-builder-mac.cjs --dir --mac",
     "pack": "npm run build && node scripts/check-git.mjs && electron-builder --dir --win --x64",
     "dist": "npm run build && node scripts/check-git.mjs && electron-builder --win nsis --x64"
   },
@@ -59,6 +73,7 @@
     }
   },
   "dependencies": {
+    "@codemirror/autocomplete": "6.20.4",
     "@codemirror/commands": "6.11.1",
     "@codemirror/lang-markdown": "6.5.2",
     "@codemirror/language": "6.13.1",
@@ -79,7 +94,13 @@
     "@tiptap/starter-kit": "3.32.0",
     "codemirror": "6.0.2",
     "diff": "9.0.0",
+    "docx": "9.15.0",
+    "fontkit": "2.0.4",
+    "image-size": "2.0.4",
+    "jszip": "3.10.1",
     "katex": "0.19.0",
+    "pdfjs-dist": "6.4.299",
+    "pptxgenjs": "4.0.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-markdown": "10.1.0",
@@ -93,6 +114,7 @@
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
+    "@types/fontkit": "2.0.9",
     "@types/katex": "0.16.8",
     "@types/node": "26.6.5",
     "@types/react": "19.3.0",

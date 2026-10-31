@@ -1,27 +1,20 @@
 import { unified } from 'unified'
-import remarkParse from 'remark-parse'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import remarkStringify from 'remark-stringify'
 import type { JSONContent } from '@tiptap/core'
 import { ensureMarkDocument, parseMarks, readMarkDocument, reconcileMarkDocument, type MarkMapping, type MarkStyle } from './marks'
-import { parseBlocks } from './blocks'
+import { parseBlocks, parseMarkdown, type MarkdownAst as Ast } from './blocks'
 import { createMarkId } from '../engine/mark'
 
-interface Ast {
-  type: string; value?: string; children?: Ast[]; depth?: number; url?: string; title?: string | null; alt?: string | null
-  identifier?: string; label?: string; referenceType?: string; ordered?: boolean; start?: number | null; spread?: boolean; checked?: boolean | null
-  lang?: string | null; meta?: string | null; align?: Array<string | null>
-  position?: { start: { offset: number }; end: { offset: number } }
-}
-export interface SourceBlock { id: string; type: string; from: number; to: number; raw: string; json: string }
+export interface SourceBlock { id: string; type: string; from: number; to: number; raw: string; json: string; items?: Array<{ from: number; to: number }> }
 export interface RichMarkdownDocument { source: string; originalSource: string; identitySource: string; doc: JSONContent; blocks: SourceBlock[]; markMappings: MarkMapping[]; fingerprints: string[] }
 export interface RichSourceSpan { from: number; to: number; index: number }
 export interface RichMarkSpan extends RichSourceSpan { itemIndex?: number; id?: string; type?: string; style?: MarkStyle }
-const parser = unified().use(remarkParse).use(remarkGfm).use(remarkMath)
 const writer = unified().use(remarkGfm).use(remarkMath).use(remarkStringify, { bullet: '-', fences: true, listItemIndent: 'one', emphasis: '*', rule: '-' })
 const inlineTags: Record<string, string> = { u: 'underline', sup: 'superscript', sub: 'subscript', mark: 'highlight' }
 const tagForMark: Record<string, string> = Object.fromEntries(Object.entries(inlineTags).map(([tag, mark]) => [mark, tag]))
+const containsOpaque = (node: JSONContent): boolean => node.type === 'opaqueInline' || node.type === 'opaqueBlock' || !!node.content?.some(containsOpaque)
 
 function clean(node: JSONContent): unknown {
   const attrs = Object.fromEntries(Object.entries(node.attrs ?? {}).filter(([key, value]) => !['sourceId', 'id', 'markId', 'markFontFamily', 'markFontSize'].includes(key) && value !== null && value !== undefined && !(key === 'colspan' && value === 1) && !(key === 'rowspan' && value === 1)).sort(([a], [b]) => a.localeCompare(b)))
@@ -38,7 +31,7 @@ export function importMarkdown(originalSource: string): RichMarkdownDocument {
     const mark = styled.get(from)
     return mark ? { markId: mark.id, markFontFamily: mark.style.fontFamily ?? null, markFontSize: mark.style.fontSize ?? null } : {}
   }
-  const tree = parser.parse(source) as Ast
+  const tree = parseMarkdown(source)
   const definitions = new Map<string, Ast>()
   for (const node of tree.children ?? []) if (node.type === 'definition') definitions.set(node.identifier?.toLowerCase() ?? '', node)
   const raw = (node: Ast) => source.slice(node.position?.start.offset ?? 0, node.position?.end.offset ?? 0)
@@ -108,11 +101,12 @@ export function importMarkdown(originalSource: string): RichMarkdownDocument {
     converted.attrs = { ...converted.attrs, sourceId: id }
     if (node.type === 'list') converted.content?.forEach((item, itemIndex) => { item.attrs = { ...item.attrs, ...markAttrs(node.children![itemIndex].position!.start.offset) } })
     else converted.attrs = { ...converted.attrs, ...markAttrs(node.position!.start.offset) }
-    blocks.push({ id, type: node.type, from: node.position!.start.offset, to: node.position!.end.offset, raw: raw(node), json: richFingerprint(converted) })
+    blocks.push({ id, type: node.type, from: node.position!.start.offset, to: node.position!.end.offset, raw: raw(node), json: richFingerprint(converted),
+      ...(node.type === 'list' ? { items: node.children!.map(item => ({ from: item.position!.start.offset - node.position!.start.offset, to: item.position!.end.offset - node.position!.start.offset })) } : {}) })
     content.push(converted)
   })
   if (!content.length || (!emptyMarks.some(mark => mark.from === source.length) && /(?:\r?\n[ \t]*){2,}$/.test(source))) content.push({ type: 'paragraph', attrs: { sourceId: 'source-empty', ...markAttrs(source.length) } })
-  return { source, originalSource, identitySource, doc: { type: 'doc', content }, blocks, markMappings: activeMarks.map(({ id, from, to, type, style }) => ({ id, from, to, type, style })), fingerprints: content.map(richFingerprint) }
+  return { source, originalSource, identitySource, doc: { type: 'doc', content }, blocks, markMappings: activeMarks.map(({ id, from, to, type, style }) => ({ id, from, to, type, style })), fingerprints: content.map((node, index) => blocks[index]?.json ?? richFingerprint(node)) }
 }
 
 function inlineAst(nodes: JSONContent[]): Ast[] {
@@ -201,10 +195,9 @@ function exportBodyWithMap(doc: JSONContent, base: RichMarkdownDocument): { sour
   return { source, spans }
 }
 /** Product Marks are root blocks or items of a root list, distinct from inline formatting marks. */
-export function richMarkSpans(doc: JSONContent, body: string, spans: RichSourceSpan[], originals: SourceBlock[] = []): RichMarkSpan[] {
+function richMarkSpans(doc: JSONContent, body: string, spans: RichSourceSpan[], originals: SourceBlock[]): RichMarkSpan[] {
   const result: RichMarkSpan[] = []
   const byId = new Map(originals.map(block => [block.id, block]))
-  const containsOpaque = (node: JSONContent): boolean => node.type === 'opaqueInline' || node.type === 'opaqueBlock' || !!node.content?.some(containsOpaque)
   const semanticType = (node: JSONContent, span: RichSourceSpan): string | undefined => {
     const original = byId.get(node.attrs?.sourceId)
     if (original && original.raw === body.slice(span.from, span.to)) return original.type
@@ -226,7 +219,15 @@ export function richMarkSpans(doc: JSONContent, body: string, spans: RichSourceS
   for (const span of spans) {
     const node = doc.content?.[span.index]; if (!node) continue
     if (['bulletList', 'orderedList', 'taskList'].includes(node.type!)) {
-      const items = parseBlocks(body.slice(span.from, span.to)).filter(mark => mark.type === 'listItem')
+      const raw = body.slice(span.from, span.to), original = byId.get(node.attrs?.sourceId)
+      let items = original?.raw === raw ? original.items : undefined
+      // The writer indents every continuation line; only root item markers start at column zero.
+      // Imported/opaque Markdown keeps the parser's ranges instead of assuming this format.
+      if (!items && !containsOpaque(node)) {
+        const starts = [...raw.matchAll(/^(?:[-+*]|\d{1,9}[.)])(?:[ \t]+|\r?$)/gm)].map(match => match.index!)
+        if (starts.length === node.content?.length && starts[0] === 0) items = starts.map((from, index) => ({ from, to: from + raw.slice(from, starts[index + 1] ?? raw.length).replace(/(?:\r?\n[ \t]*)+$/, '').length }))
+      }
+      items ??= parseBlocks(raw).filter(mark => mark.type === 'listItem')
       if (items.length !== node.content?.length) continue
       items.forEach((mark, itemIndex) => result.push({ from: span.from + mark.from, to: span.from + mark.to, index: span.index, itemIndex, ...identity(node.content![itemIndex]), type: 'listItem' }))
     } else result.push({ ...span, ...identity(node), type: semanticType(node, span) })

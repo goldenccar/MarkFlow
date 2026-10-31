@@ -1,0 +1,13 @@
+{
+  "format": "markflow-presentation",
+  "version": 1,
+  "target": "docx",
+  "theme": "standard-v1",
+  "sections": [
+    {
+      "marks": [
+        "invalid-mark"
+      ]
+    }
+  ]
+}

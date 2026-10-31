@@ -155,3 +155,27 @@ test('registered empty Marks inside Markdown gaps survive persistence and hydrat
   assert.deepEqual(parseMarks(edited).map(mark => mark.id), [marks[0].id, emptyId, marks[1].id])
   assert.equal(ensureMarkDocument(edited), edited)
 })
+
+test('exact registered trailing empty Marks survive a single final newline without changing IDs', () => {
+  for (const eol of ['\n', '\r\n']) {
+    const original = ensureMarkDocument('Alpha'), first = parseMarks(original)[0], emptyId = crypto.randomUUID(), body = `Alpha${eol}`
+    const edited = reconcileMarkDocument(original, body, [
+      { id: first.id, type: 'paragraph', from: 0, to: 5 },
+      { id: emptyId, type: 'empty', from: body.length, to: body.length },
+    ])
+    assert.deepEqual(parseMarks(edited).map(mark => mark.id), [first.id, emptyId])
+    assert.equal(parseMarks(edited)[1].line, 2)
+    assert.equal(readMarkDocument(edited).body, body)
+    assert.equal(ensureMarkDocument(edited), edited)
+    const stale = edited.replace(/"bodyHash":"[^"]+"/, '"bodyHash":"0:0:0"')
+    assert.ok(!parseMarks(stale).some(mark => mark.id === emptyId), 'a stale registry cannot invent a trailing empty Mark')
+  }
+})
+
+test('registered empty Marks still reject overlap, interior single-newline gaps, missing newline and orphan records', () => {
+  for (const [body, offset, orphan] of [['Alpha\n\nBeta', 6, false], ['Alpha\n', 2, false], ['Alpha', 5, false], ['Alpha\n', 6, true]] as const) {
+    const document = readMarkDocument(ensureMarkDocument(body)), extra = { id: crypto.randomUUID(), type: 'empty', from: offset, to: offset, raw: '', before: body.slice(0, offset), after: body.slice(offset), style: {}, orphan }
+    const source = body + '\n\n<!-- oops:marks ' + JSON.stringify({ ...document.metadata, marks: [...document.metadata!.marks, extra] }) + ' -->'
+    assert.ok(!parseMarks(source).some(mark => mark.id === extra.id), JSON.stringify({ body, offset, orphan }))
+  }
+})

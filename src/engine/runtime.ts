@@ -331,7 +331,7 @@ export class MarkEngine<C> {
     engine.history = new SnapshotHistory(first, { clone: value => value, equal: (a, b) => JSON.stringify(a.roots) === JSON.stringify(b.roots) })
     return engine
   }
-  get snapshot(): MarkSnapshot<C> { return copyData(this.history.current) }
+  get snapshot(): MarkSnapshot<C> { return (globalThis as unknown as { structuredClone<T>(value: T): T }).structuredClone(this.history.current) }
   get bytes() { return this.history.bytes }
   boundary() { this.history.boundary() }
   private commit(next: MarkSnapshot<C>, options: TransactionOptions) {

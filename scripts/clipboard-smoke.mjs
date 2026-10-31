@@ -1,3 +1,4 @@
+import { openLocalProject } from './ui-test-utils.mjs'
 import { _electron as electron, expect } from '@playwright/test'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -26,7 +27,7 @@ try {
     clipboard.writeText = async value => { globalThis.__copiedTexts.push(value) }
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] })
   }, library)
-  await page.locator('.sidebar').getByRole('button', { name: '打开项目', exact: true }).click()
+  await openLocalProject(page)
   await page.locator('.tree-scroll').getByRole('button', { name: 'copy.md', exact: true }).click()
   await page.getByRole('button', { name: '对照', exact: true }).click()
   await expect(page.locator('.editor-area')).toHaveClass(/layout-split/)

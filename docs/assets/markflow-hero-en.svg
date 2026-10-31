@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="800" viewBox="0 0 1600 800" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">MarkFlow: One source. Reports and slides.</title>
+  <desc id="desc">Conceptual workflow, not an application screenshot. Markdown or structured content becomes shared Mark content and editable DOCX reports and PPTX slides. In the fictional Ridge project, the team count changes from 12 to 18 and both deliverables use the updated fact.</desc>
+  <defs>
+    <style>
+      text { font-family: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+      .ink { fill: #173f35; } .muted { fill: #64776e; }
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M2 1 6 5 2 9" stroke="#7c9485" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+  </defs>
+  <rect width="1600" height="800" rx="32" fill="#f5f6f3"/>
+  <rect x="72" y="55" width="44" height="44" rx="12" fill="#173f35"/>
+  <path d="M83 86V69l11 11 11-11v17" stroke="#f5f6f3" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="132" y="88" class="ink" font-size="30" font-weight="700" letter-spacing="-.7">MarkFlow</text>
+  <circle cx="1300" cy="78" r="4" fill="#d58a58"/>
+  <text x="1315" y="85" class="muted" font-size="18">Conceptual workflow</text>
+  <text x="72" y="211" class="ink" font-size="75" font-weight="700" letter-spacing="-2.7">One source. Reports and slides.</text>
+  <text x="76" y="264" class="muted" font-size="27">Write the facts once. Give every format its own presentation.</text>
+
+  <path d="M450 500H510" stroke="#7c9485" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <path d="M890 500H936M936 407V597M936 407H969M936 597H969" stroke="#7c9485" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M955 407H972" stroke="#7c9485" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <path d="M955 597H972" stroke="#7c9485" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <circle cx="936" cy="500" r="5" fill="#d58a58"/>
+
+  <rect x="72" y="334" width="378" height="336" rx="24" fill="#fff" stroke="#dbe3dc" stroke-width="1.5"/>
+  <circle cx="101" cy="369" r="4" fill="#d58a58"/>
+  <text x="115" y="376" class="muted" font-size="17">Markdown / structured content</text>
+  <rect x="96" y="400" width="330" height="198" rx="14" fill="#f5f6f3"/>
+  <text x="116" y="439" class="ink" font-size="27" font-weight="650"># Project Ridge</text>
+  <text x="116" y="478" class="muted" font-size="20">Participating teams</text>
+  <text x="116" y="527" fill="#93a198" font-size="38" font-weight="600">12</text>
+  <path d="M113 514H159" stroke="#93a198" stroke-width="2"/>
+  <path d="M178 513H208m-8-7 8 7-8 7" stroke="#d58a58" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="226" y="528" class="ink" font-size="42" font-weight="700">18</text>
+  <text x="116" y="571" class="muted" font-size="18">— Goals · Milestones · Progress</text>
+  <text x="98" y="638" class="ink" font-size="20">One edit. One shared fact.</text>
+
+  <rect x="526" y="367" width="364" height="270" rx="24" fill="#173f35"/>
+  <path d="M554 399h18m-18 12h18m-18 12h18" stroke="#c9ded0" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="550" cy="399" r="2" fill="#d58a58"/><circle cx="550" cy="411" r="2" fill="#d58a58"/><circle cx="550" cy="423" r="2" fill="#d58a58"/>
+  <text x="590" y="421" fill="#fff" font-size="32" font-weight="650">Shared Mark</text>
+  <text x="552" y="460" fill="#b8cec0" font-size="19">Content · Identity · References</text>
+  <rect x="550" y="483" width="316" height="72" rx="14" fill="#365f55"/>
+  <text x="570" y="527" fill="#e3eee6" font-size="22">Teams</text>
+  <text x="799" y="533" fill="#fff" font-size="38" font-weight="700">18</text>
+  <text x="552" y="602" fill="#e3eee6" font-size="21">One source, two presentations</text>
+
+  <rect x="984" y="321" width="544" height="172" rx="24" fill="#fff" stroke="#dbe3dc" stroke-width="1.5"/>
+  <rect x="1009" y="345" width="123" height="29" rx="7" fill="#e1eae3"/>
+  <text x="1021" y="365" class="ink" font-size="15" font-weight="650" letter-spacing=".6">NOTE / DOCX</text>
+  <path d="M1462 346h18l9 9v28h-27zM1480 346v9h9m-20 9h12m-12 7h12" stroke="#789284" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="1010" y="417" class="ink" font-size="31" font-weight="650">Project report</text>
+  <text x="1010" y="454" class="muted" font-size="19">Editable text, lists and tables</text>
+  <path d="M1340 393V461" stroke="#e0e7e0" stroke-width="1.5"/>
+  <text x="1363" y="414" class="muted" font-size="18">Teams</text>
+  <text x="1362" y="459" class="ink" font-size="41" font-weight="700">18</text>
+
+  <rect x="984" y="511" width="544" height="172" rx="24" fill="#fff" stroke="#dbe3dc" stroke-width="1.5"/>
+  <rect x="1009" y="535" width="133" height="29" rx="7" fill="#f5e8dc"/>
+  <text x="1021" y="555" fill="#865834" font-size="15" font-weight="650" letter-spacing=".6">STAGE / PPTX</text>
+  <path d="M1460 538h31v22h-31zm9 30 7-8 7 8m-7-8v10" stroke="#789284" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="1010" y="607" class="ink" font-size="31" font-weight="650">Project slides</text>
+  <text x="1010" y="644" class="muted" font-size="19">Editable text, images and layout</text>
+  <path d="M1340 583V651" stroke="#e0e7e0" stroke-width="1.5"/>
+  <text x="1363" y="604" class="muted" font-size="18">Teams</text>
+  <text x="1362" y="649" class="ink" font-size="41" font-weight="700">18</text>
+
+  <text x="76" y="746" class="muted" font-size="18">Project Ridge is a fictional example.</text>
+  <text x="1528" y="746" text-anchor="end" fill="#365f55" font-size="19" letter-spacing=".5">CONTENT → STRUCTURE → DELIVERY</text>
+</svg>

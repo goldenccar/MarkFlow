@@ -1,3 +1,7 @@
+import type { CompilerAPI } from './compilerUi'
+import type { PaperAPI } from './paper'
+import { defaultCompletionSettings, type CompletionSettings } from './completionSettings'
+
 export type ContentMode = 'markdown' | 'latex-math'
 export type ThemePreference = 'light' | 'dark' | 'system'
 export type ResolvedTheme = 'light' | 'dark'
@@ -6,7 +10,10 @@ export type Layout = 'source' | 'preview' | 'split'
 export const fontFamilies = ['system', 'fangsong', 'fangsong-gb2312', 'kaiti', 'kaiti-gb2312', 'microsoft-yahei', 'alibaba-puhuiti'] as const
 export type FontFamily = typeof fontFamilies[number]
 export interface FontOption { id: FontFamily; name: string; family: string; available: boolean; source: 'system' | 'bundled' | 'fallback' }
+export interface ProjectRecord { root: string; lastOpened: string; syncMode?: 'git' | 'external'; remote?: string }
+export interface ProjectLinkInfo { remote: string; name: string; matches: { root: string; branch: string; available: boolean }[] }
 export interface Settings {
+  completion: CompletionSettings
   autoCommit: boolean
   threshold: number
   theme: ThemePreference
@@ -16,11 +23,12 @@ export interface Settings {
   lineWidth: number
   layout: Layout
   recent: { root: string; path: string }[]
-  projects: { root: string; lastOpened: string }[]
+  projects: ProjectRecord[]
   lastProject: string | null
   positions: Record<string, { cursor: number; scroll: number; previewScroll?: number }>
 }
 export const defaultSettings: Settings = {
+  completion: defaultCompletionSettings,
   autoCommit: true, threshold: 500, theme: 'system', fontSize: 16, fontFamily: 'system',
   lineHeight: 1.8, lineWidth: 780, layout: 'preview', recent: [], projects: [], lastProject: null, positions: {},
 }
@@ -35,6 +43,10 @@ export interface GitStatus {
   available: boolean; repository: boolean; branch: string; remote: string;
   ahead: number; behind: number; changes: string[]; conflicts: string[];
   identity: { name: string; email: string }; blocked: string | null; lastSync: string | null
+  checkedAt: string | null
+  remoteState: 'unconfigured' | 'unchecked' | 'current' | 'behind' | 'ahead' | 'diverged' | 'missing-branch' | 'unrelated' | 'unavailable'
+  remoteError: string | null
+  trackingBranch: string
 }
 export interface GitCommitResult { committed: boolean; oid?: string; error?: string }
 export interface HistoryEntry { oid: string; date: string; subject: string }
@@ -43,12 +55,18 @@ export interface SaveResult { file: DiskFile; version: GitCommitResult }
 export interface Library { root: string; entries: FileEntry[] }
 export interface OpenDocument { file: DiskFile; draft: Draft | null; baseline: string | null }
 export interface MutationResult { path: string; affectedLinks: string[]; warning?: string }
-export interface OopsAPI {
+export interface OopsAPI extends CompilerAPI, PaperAPI {
   readonly platform: string
   setWindowAppearance(appearance: WindowAppearance): Promise<void>
   fonts(): Promise<FontOption[]>
   chooseLibrary(): Promise<Library | null>
   openProject(root: string): Promise<Library>
+  createProject(name: string): Promise<Library | null>
+  inspectProjectLink(url: string): Promise<ProjectLinkInfo>
+  cloneProject(url: string, name: string): Promise<Library | null>
+  forgetProject(root: string): Promise<Settings>
+  relocateProject(root: string): Promise<{ library: Library; previousRoot: string } | null>
+  setProjectSyncMode(root: string, mode: 'local' | 'git' | 'external'): Promise<Settings>
   listUntitled(): Promise<UntitledDraft[]>
   putUntitled(draft: UntitledDraft): Promise<void>
   deleteUntitled(id: string): Promise<void>
@@ -77,6 +95,10 @@ export interface OopsAPI {
   history(path: string): Promise<HistoryEntry[]>
   version(path: string, oid: string): Promise<string>
   sync(): Promise<GitStatus>
+  checkRemote(): Promise<GitStatus>
+  updateFromRemote(): Promise<GitStatus>
+  pushChanges(): Promise<GitStatus>
+  publishBranch(): Promise<GitStatus>
   abortMerge(): Promise<GitStatus>
   resolveConflict(path: string, choice: 'ours' | 'theirs'): Promise<GitStatus>
   finishMerge(): Promise<GitStatus>

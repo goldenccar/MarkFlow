@@ -1,0 +1,18 @@
+.slash-completion-menu, .cm-tooltip-autocomplete {
+  border: 1px solid var(--line) !important; border-radius: 10px; background: var(--surface-raised, var(--bg)) !important;
+  color: var(--text) !important; box-shadow: var(--menu-shadow, 0 12px 32px #0002); font: 12px/1.5 var(--font-ui);
+}
+.slash-completion-menu { position: fixed; z-index: 65; width: 330px; max-width: calc(100vw - 16px); max-height: min(380px, 65vh); overflow: auto; padding: 5px; }
+.slash-completion-hint { padding: 6px 8px 9px; color: var(--muted); font-size: 10px; }
+.slash-completion-menu > button { display: grid; grid-template-columns: 90px 1fr; width: 100%; min-height: 51px; gap: 0 9px; padding: 6px 9px; text-align: left; border: 0; border-radius: 5px; background: transparent; color: inherit; }
+.slash-completion-menu > button strong { font: 12px/1.5 var(--font-mono); }
+.slash-completion-menu > button span { justify-self: end; color: var(--muted); }
+.slash-completion-menu > button code { grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--subtle); font: 11px/1.5 var(--font-mono); }
+.slash-completion-menu > button:is([aria-selected='true'], :hover), .cm-tooltip-autocomplete > ul > li[aria-selected='true'] { background: var(--selection) !important; color: var(--text) !important; }
+.cm-tooltip-autocomplete { padding: 5px; min-width: 255px; max-width: min(420px, calc(100vw - 16px)); }
+.cm-tooltip-autocomplete > ul > li.slash-completion-option { padding: 6px 8px; border-radius: 5px; }
+.cm-completionLabel { font-family: var(--font-mono); }
+.cm-completionDetail { color: var(--muted); font-style: normal !important; }
+.slash-completion-key { float: right; margin-left: 14px; color: var(--subtle); font-size: 10px; }
+.cm-tooltip.cm-completionInfo { padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised, var(--bg)); color: var(--text); white-space: pre-wrap; font: 11px/1.65 var(--font-mono); max-width: min(360px, 60vw); }
+.rich-editor .tiptap :is(ul, ol) :is(ul, ol) { padding-left: 24px; }

@@ -1,4 +1,4 @@
-import { newDocument, showBlockInspector } from './ui-test-utils.mjs'
+import { openLocalProject, newDocument, showBlockInspector } from './ui-test-utils.mjs'
 import { _electron as electron, expect } from '@playwright/test'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
@@ -70,7 +70,7 @@ async function jump(label) {
 try {
   await launch(); await expect(rich()).toBeVisible()
   await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }) }, library)
-  await page.getByRole('button', { name: '打开项目', exact: true }).click()
+  await openLocalProject(page)
   await page.locator('.tree-scroll').getByRole('button', { name: '样式.md', exact: true }).click()
   await expect(rich()).toContainText('第一段 Alpha 内容。')
   const fonts = await page.evaluate(() => window.oops.fonts())

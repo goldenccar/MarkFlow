@@ -1,129 +1,113 @@
 # MarkFlow
 
-MarkFlow 是一款以本地文件为基础的桌面写作工具，支持 Markdown 编辑、LaTeX 数学公式、内容块排版和 Git 版本记录。
+**中文** · [English](README.en.md)
 
-文档保存在你自己的文件夹中，无需注册账号即可编辑和保存。你可以先写内容，再选择保存位置，也可以直接打开已有的文档和项目。
+![MarkFlow：一份内容，多种交付](docs/assets/markflow-hero-zh.svg)
 
-[功能与特性](#功能与特性) · [使用教程](#使用教程) · [安装与运行](#安装与运行) · [Windows 安装包](#windows-安装包)
+**用一份资料，写出报告，也做出演示。**
 
-![MarkFlow 编辑界面](docs/assets/markdown-light.png)
+MarkFlow 是一个本地优先的写作工作区与文档编译器。用 Markdown 写作，用可复用的 Mark 组织内容，再生成可继续编辑的 Word 报告和 PowerPoint 演示。资料发生变化时，更新共享内容，重新生成两份交付物。
 
-## 功能与特性
+[开始使用](#开始使用) · [查看示例](#一次修改两份交付) · [产品设计](docs/PRD.md) · [开发文档](docs/DEVELOPMENT.md) · [路线图](OopsMD-TODO.md)
 
-| 功能 | 说明 |
-| --- | --- |
-| Markdown 编辑 | 支持标题、列表、引用、代码、表格、任务列表、链接、图片和数学公式 |
-| 三种编辑视图 | 在实时预览、源码和对照视图之间切换，保留内容与撤销历史 |
-| 内容块排版 | 为段落、标题、列表项等内容块单独设置字体和字号，支持移动、复制及格式转换 |
-| Formula 数学公式 | 输入 LaTeX 数学片段，对照源码查看公式渲染结果 |
-| 项目与文件管理 | 使用本地文件夹组织资料，支持文件树、移动、重命名和归档 |
-| 多标签与草稿 | 同时打开多份文档，支持固定、排序、重新打开标签及恢复未保存内容 |
-| 正文导航 | 按标题层级浏览目录，搜索和定位章节 |
-| 主题 | 支持跟随系统、浅色和深色外观 |
-| Git 版本记录 | 按设置记录本地版本，查看历史，并手动同步到 GitHub |
+## 内容写一份，交付有多种
+
+- **资料共用，表达各有侧重。** 报告展开细节，演示突出重点。正文与呈现分开维护，让两种表达使用同一组事实。
+- **改动沿着内容传递。** 将共享资料中的“12 个城市”改为“18 个城市”，重新生成，报告与演示中的对应内容一起更新。
+- **文件交出去，还能接着改。** DOCX / PPTX 保留原生文字、表格和图片对象，接收方可以在熟悉的办公软件里继续工作。
+- **从写作到生成，都在本地。** 编辑、保存和编译无需注册账号或配置 AI 密钥；也可以通过 SDK / CLI 将生成能力接入自己的工具。
+
+![从编写资料、选择呈现到生成可编辑文件的工作流](docs/assets/markflow-workflow-zh.svg)
+
+## 一次修改，两份交付
+
+仓库自带一组完整示例：一份项目资料、两份呈现描述，生成 **2 页报告与 4 页演示**。修改一项共同事实，再次生成即可看到两种产物的变化。
+
+| 交付物 | 原始资料：12 个城市 | 更新资料：18 个城市 |
+| --- | --- | --- |
+| Word 报告 | [打开报告](examples/compiler/generated/report.docx) | [打开更新后的报告](examples/compiler/generated/updated-report.docx) |
+| PowerPoint 演示 | [打开演示](examples/compiler/generated/deck.pptx) | [打开更新后的演示](examples/compiler/generated/updated-deck.pptx) |
+
+这些文件来自同一份虚构项目资料。示例已在 Windows WPS 中完成文字、表格、图片的修改、保存与重新打开。[查看源文件与运行方法](examples/compiler/README.md) · [查看验收记录](docs/compiler/ACCEPTANCE.md)
+
+## 一个适合日常写作的工作区
+
+先写内容，保存时再选择位置。文件留在自己的文件夹里；多个标签各自保留草稿、编辑状态和撤销历史。
+
+![MarkFlow 当前桌面工作区：Markdown 编辑、项目文件与正文导航](docs/assets/workspace-light.png)
+
+Markdown 提供排版编辑、源码与对照三种视图。标题、段落和列表项都可以作为 Mark 调整字体、字号、顺序；正文目录帮助你在长文中找到需要修改的部分。Fomula 提供公式片段的即时渲染和完整 LaTeX 文档的实际 PDF 预览。
+
+**公式与文档：顶部 ＋ → Fomula。** 在“公式片段 / LaTeX 文档”之间切换；从中文/英文模板开始，或打开已有项目。页面设置表单配置纸张、正文与页眉页脚，右侧 PDF 独立跨页阅读。支持斜线提示与 Tab 补全、文献、错误定位和 PDF/源包导出。[使用与环境准备](docs/LATEX-WORKSPACE.md)
+
+论文首页也可选择当前 Markdown 或本地 Mark 资料，配置标题、作者、摘要和文献后生成论文。生成稿保留来源，另存为独立 LaTeX 后可直接编辑。Windows 完整分发件支持在应用内安装离线环境；macOS 实机仍待验收。[本轮验证与边界](docs/PAPER-DELIVERY.md)
+
+需要版本记录时再启用 Git。保存、本地版本和远端同步分别管理；默认在正文净修改达到 **500** 时记录版本，阈值可调整或关闭。
 
 <details>
-<summary>查看公式编辑与深色界面</summary>
+<summary>查看深色工作区</summary>
 
-**公式编辑：源码与渲染结果并排显示。**
-
-![LaTeX 数学公式编辑](docs/assets/geek-light.png)
-
-**深色界面。**
-
-![MarkFlow 深色界面](docs/assets/markdown-dark.png)
+![MarkFlow 深色工作区](docs/assets/workspace-dark.png)
 
 </details>
 
-## 使用教程
+## 在工作区里生成 Word 和 PPT
 
-### 开始写作
+点击文件路径栏右侧的 **生成**，选择当前 Markdown、内置示例或本地资料，再选择 Word 报告或 PPT 演示。
 
-1. 首次启动后直接输入内容；已有工作记录时，可继续上次项目或点击“新建文档”。
-2. 按 **Ctrl+S**（macOS：**⌘S**），选择文件夹和文件名，例如 `我的笔记.md`。
-3. 使用工具栏中的“实时预览”“源码”“对照”切换编辑方式。
-4. 点击标签栏的 **+**，继续创建文档；点击左侧项目旁的 **+**，打开已有文件夹。
+![MarkFlow 的 Word / PPT 生成面板](docs/assets/generate-panel.png)
 
-取消首次保存会保留草稿。关闭未保存的标签时，可以选择保存、保留草稿或取消关闭。
+当前文档可以直接使用尚未保存的编辑内容。生成完成后打开文件继续处理；遇到缺失资源、超出页面容量等问题，诊断会指出原因，并为当前文档提供可用的内容定位。
 
-### 排版与导航
+当前生成器支持标题、段落、扁平列表、简单表格、PNG/JPEG 图片与常用文字格式，采用固定报告主题和四类演示版式。[完整输入说明](docs/compiler/LANGUAGE.md)
 
-在实时预览中直接编辑排版后的正文，使用工具栏设置加粗、斜体、下划线等格式。段落、标题、列表项等内容块称为 **Mark**，可以单独调整字体和字号。
+## 开始使用
 
-通过内容块左侧的操作入口，将正文转换为标题、列表、引用或代码块。正文右侧的目录按标题组织，支持搜索、折叠和点击定位；需要持续查看时，可以固定目录。
+### 运行桌面工作区
 
-### 编写数学公式
-
-Markdown 正文使用 `$...$` 插入行内公式，使用 `$$...$$` 插入独立公式。例如：
-
-```markdown
-质能关系为 $E = mc^2$。
-
-$$
-\frac{a}{b} + \sqrt{x}
-$$
-```
-
-打开 `.tex` 文件可进入 Formula 数学编辑器，直接输入 LaTeX 数学片段，在对照视图中查看结果。公式未完成或存在语法错误时，源码会保留，便于继续修改。
-
-### 管理文件与标签
-
-- 将一个本地文件夹作为项目打开，通过左侧文件树浏览资料。
-- 拖动文件或文件夹调整位置，右键进行重命名、归档或移到回收站。
-- 归档会隐藏工作树中的条目，原文件仍保留，可从“归档”区域恢复。
-- 拖动标签调整顺序，右键固定标签或关闭其他标签；误关的标签可以重新打开。
-
-### 记录版本与同步
-
-1. 打开“Git 与同步”，填写作者姓名和邮箱，点击“启用 Git 并建立基线”。已有 Git 仓库可直接打开仓库根目录。
-2. 保存文档时记录本地版本，也可以在设置中调整或关闭自动版本记录。默认在正文净修改达到 **500** 时触发。
-3. 在历史面板查看记录，并载入需要恢复的版本。
-4. 如需同步到 GitHub，填写远端仓库地址和分支，完成本机 Git 授权后点击手动同步。
-
-本地保存、版本记录和远端同步分别显示结果。普通编辑和保存不需要启用 Git。更多操作见 [使用指南](docs/USAGE.md)。
-
-### 常用快捷键
-
-| 操作 | Windows | macOS |
-| --- | --- | --- |
-| 新建 Markdown 文档 | Ctrl+N | ⌘N |
-| 打开文件 | Ctrl+O | ⌘O |
-| 打开项目 | Ctrl+Shift+O | ⌘⇧O |
-| 保存 | Ctrl+S | ⌘S |
-| 查找 | Ctrl+F | ⌘F |
-| 关闭标签 | Ctrl+W | ⌘W |
-| 重新打开关闭的标签 | Ctrl+Shift+T | ⌘⇧T |
-
-## 安装与运行
-
-准备 **Node.js 22.12 或更高版本**和 **Git**。仓库使用的 Node.js 版本见 [`.nvmrc`](.nvmrc)。首次安装依赖和 Electron 需要联网。
-
-在终端中执行：
+准备 **Node.js 22.12+** 和 Git；仓库使用的 Node.js 版本见 [`.nvmrc`](.nvmrc)。
 
 ```bash
 git clone https://github.com/goldenccar/MarkFlow.git
 cd MarkFlow
 npm ci
 npm exec --no -- install-electron
-npm run build
-npm start
+npm run dev
 ```
 
-启动后会打开桌面窗口。后续使用时，在项目目录执行 `npm start` 即可。
+启动后即可写作。想先体验生成流程，打开 **生成 → 内置示例**。
 
-## Windows 安装包
+### 只使用编译器
 
-在 **Windows x64** 电脑上完成上述依赖安装后，在项目目录执行：
+在项目目录安装依赖并运行示例，无需启动桌面窗口：
 
 ```powershell
-npm run prepare:git
-npm run dist
+npm ci --ignore-scripts
+npm run compiler:demo -- --font C:/Windows/Fonts/msyh.ttc
 ```
 
-第一步需要联网下载随应用分发的 Git 运行组件；第二步构建应用并生成安装包。
+文件输出到 `examples/compiler/generated`。以上命令使用 Windows 本机的微软雅黑字体；字体随本机环境提供。[SDK / CLI 与字体配置](docs/compiler/SDK.md)
 
-安装包输出到 `release` 文件夹，命名为 `MarkFlow-<版本号>-win-x64-setup.exe`。将生成的 `.exe` 安装程序复制到目标 Windows 电脑，运行并选择安装位置，完成后通过桌面快捷方式启动。目标电脑无需另外安装 Node.js 或 Git。
+当前为开发版，桌面生成与文件编辑验收覆盖 Windows / WPS，macOS 已有桌面开发版交互检查。构建自己的 Windows 安装包、跨平台开发及各版本验证范围，见 [开发指南](docs/DEVELOPMENT.md) 和 [验证记录](docs/VALIDATION.md)。
+
+## 正在走向哪里
+
+MarkFlow 的长期方向，是让人和 AI 围绕同一份结构化内容协作。
+
+| 阶段 | 能力 |
+| --- | --- |
+| 现在 | 本地 Markdown / Fomula 工作区、共享内容生成 DOCX / PPTX、桌面生成入口、独立 SDK / CLI |
+| 接下来 | 自定义 AI API、选段修改、差异预览与撤销，以及完整成本对照 |
+| 持续扩展 | 带来源定位的知识助手，Note / Stage 可视化编辑，Array 表格与已有 PDF 的阅读和处理 |
+
+AI 将通过明确的内容操作接入现有编辑与保存流程。完整计划与进度见 [产品设计](docs/PRD.md) 和 [开发清单](OopsMD-TODO.md)。
+
+## 一起把交付做得更好
+
+欢迎贡献可复用的样例、版式、格式适配和问题修复。一个可公开的最小输入、期望结果与实际表现，就是很有价值的反馈。
+
+[提交问题](https://github.com/goldenccar/MarkFlow/issues) · [开发与测试](docs/DEVELOPMENT.md) · [编译器结构](docs/compiler/WRITERS.md) · [产品需求](docs/PRD.md)
 
 ## 许可证
 
-本项目采用 [MIT License](LICENSE)。
+MarkFlow 使用 [MIT License](LICENSE)。

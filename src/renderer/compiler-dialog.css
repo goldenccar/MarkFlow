@@ -1,0 +1,75 @@
+.compiler-dialog { width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 24px; overflow: auto; color: var(--text); }
+.compiler-dialog::backdrop { background: #18231d50; }
+.compiler-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.compiler-heading h2 { margin: 0; }
+.compiler-dialog .compiler-intro { margin: 8px 0 22px; max-height: none; line-height: 1.65; }
+.compiler-body { display: grid; gap: 22px; }
+.compiler-fieldset { margin: 0; padding: 0; min-width: 0; border: 0; }
+.compiler-fieldset > legend { margin-bottom: 10px; padding: 0; font-weight: 600; font-size: 12px; color: var(--muted); }
+.compiler-source-options { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.compiler-source-options label, .compiler-target-options label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.compiler-dialog input[type='radio'] { flex-shrink: 0; width: 14px; height: 14px; min-height: 0; margin: 0; padding: 0; accent-color: var(--accent); }
+.compiler-source-options label:has(input:disabled) { cursor: default; opacity: .5; }
+.compiler-source-summary { display: grid; gap: 5px; margin-top: 12px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.compiler-source-summary strong { color: var(--text); font-size: 13px; font-weight: 500; }
+.compiler-source-summary > span { color: var(--muted); }
+.compiler-file-choice { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.compiler-file-choice > span { min-width: 0; }
+.compiler-file-choice > button { flex-shrink: 0; }
+.compiler-target-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.compiler-target-options label { padding: 14px 12px; border: 1px solid var(--line); border-radius: var(--radius); transition: background var(--motion), border-color var(--motion); }
+.compiler-target-options label:hover { background: var(--hover); }
+.compiler-target-options label[data-selected='true'] { border-color: var(--accent); background: var(--accent-bg); }
+.compiler-target-options label:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.compiler-target-options label > span { display: grid; gap: 5px; }
+.compiler-target-options strong { font-size: 13px; font-weight: 600; }
+.compiler-target-options small { font-size: 11px; line-height: 1.5; color: var(--muted); }
+.compiler-advanced { border-top: 1px solid var(--line); }
+.compiler-advanced > summary { padding: 14px 0; cursor: pointer; font-weight: 500; font-size: 12px; }
+.compiler-advanced > summary > span { margin-left: 10px; color: var(--muted); font-size: 11px; font-weight: 400; }
+.compiler-advanced > summary:focus-visible, .compiler-diagnostic-details > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
+.compiler-advanced > summary[aria-disabled='true'] { cursor: default; }
+.compiler-advanced > fieldset { display: grid; gap: 18px; padding-top: 2px; }
+.compiler-setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.compiler-setting-row > div:first-child { display: grid; gap: 5px; min-width: 0; }
+.compiler-setting-row strong, .compiler-font-setting > strong { font-size: 12px; font-weight: 600; }
+.compiler-setting-row span { font-size: 11px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }
+.compiler-setting-row > button, .compiler-setting-actions { flex-shrink: 0; }
+.compiler-setting-actions { display: grid; gap: 4px; }
+.compiler-setting-row button, .compiler-font-picker button { font-size: 12px; border: 1px solid var(--line); }
+.compiler-dialog .compiler-font-setting > p { margin: 5px 0 12px; max-height: none; font-size: 11px; line-height: 1.6; }
+.compiler-font-list { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 7px; }
+.compiler-font-list li { display: grid; gap: 3px; font-size: 11px; }
+.compiler-font-list code { color: var(--muted); font-size: 10px; white-space: normal; overflow-wrap: anywhere; }
+.compiler-font-picker { display: flex; align-items: flex-end; gap: 10px; }
+.compiler-font-picker > label { display: grid; gap: 6px; flex: 1; min-width: 0; font-size: 11px; color: var(--muted); }
+.compiler-dialog .compiler-font-picker input { margin: 0; width: 100%; }
+.compiler-font-picker > button { flex-shrink: 0; min-height: 34px; }
+.compiler-diagnostics { padding: 14px 0 0; border-top: 1px solid var(--line); }
+.compiler-diagnostics > h3 { color: var(--danger); }
+.compiler-diagnostics.is-warning > h3 { color: var(--muted); }
+.compiler-dialog h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+.compiler-diagnostics ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 16px; }
+.compiler-diagnostic-reason { font-size: 12px; line-height: 1.7; }
+.compiler-diagnostic-location { margin-top: 5px; font-size: 11px; color: var(--muted); line-height: 1.6; overflow-wrap: anywhere; }
+.compiler-diagnostics li > button { margin-top: 5px; padding-left: 0; font-size: 11px; color: var(--accent); }
+.compiler-diagnostic-details { margin-top: 6px; font-size: 11px; color: var(--muted); }
+.compiler-diagnostic-details summary { cursor: pointer; overflow-wrap: anywhere; }
+.compiler-dialog .compiler-diagnostic-details p { margin: 8px 0 0; max-height: none; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.compiler-success { padding-top: 16px; border-top: 1px solid var(--line); }
+.compiler-success-heading { display: flex; align-items: center; gap: 7px; color: var(--accent); }
+.compiler-success-heading h3 { margin: 0; }
+.compiler-output-path { margin: 9px 0 12px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.compiler-success-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.compiler-footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+.compiler-footer > span { font-size: 11px; color: var(--muted); line-height: 1.6; }
+.compiler-footer > button { flex-shrink: 0; }
+@media (max-width: 540px) {
+  .compiler-dialog { padding: 20px; }
+  .compiler-target-options { grid-template-columns: 1fr; }
+  .compiler-setting-row, .compiler-file-choice { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .compiler-setting-actions { display: flex; flex-wrap: wrap; }
+  .compiler-footer { flex-direction: column; align-items: stretch; gap: 12px; }
+  .compiler-footer > button { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .compiler-target-options label { transition: none; } }

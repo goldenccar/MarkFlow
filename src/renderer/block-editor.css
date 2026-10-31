@@ -63,7 +63,6 @@
 .block-format-check { margin-left: auto; font-size: 12px; }
 .block-format-note { margin: 5px 4px 2px; padding: 8px 4px 2px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.6; }
 @keyframes block-handle-enter { from { opacity: 0; } to { opacity: 1; } }
-.app[data-layout-animating='true'] .block-format-handle { visibility: hidden; }
 @keyframes block-menu-enter { from { opacity: 0; transform: translateY(3px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @media (hover: none) { .rich-editor .rich-math-edit { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .rich-editor .rich-math-edit, .rich-editor [data-mark-id], .block-format-handle, .block-format-menu { transition: none; animation: none; } }

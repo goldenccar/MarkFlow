@@ -1,0 +1,29 @@
+{
+  "format": "markflow-presentation",
+  "version": 1,
+  "target": "docx",
+  "theme": "standard-v1",
+  "sections": [
+    {
+      "marks": [
+        "report-title",
+        "fact-coverage",
+        "report-context",
+        "review-heading",
+        "check-one",
+        "check-two",
+        "reference-link"
+      ]
+    },
+    {
+      "breakBefore": true,
+      "marks": [
+        "image-heading",
+        "test-image",
+        "image-context",
+        "table-heading",
+        "status-table"
+      ]
+    }
+  ]
+}

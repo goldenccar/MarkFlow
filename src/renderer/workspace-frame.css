@@ -1,0 +1,19 @@
+.workspace-sidebar { display: flex; flex-direction: column; min-height: 0; }
+.project-outline { flex-shrink: 0; max-height: 30%; overflow: auto; padding: 8px 12px; border-top: 1px solid var(--line); }
+.project-outline .sidebar-heading { padding-inline: 10px; }
+.project-outline .tree-item { justify-content: space-between; }
+.project-outline small { color: var(--muted); font-size: 10px; }
+.workspace-sidebar .project-item { border-radius: var(--radius); }
+.workspace-header { flex-shrink: 0; }
+.workspace-mode { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
+.paper-workspace-host { min-width: 0; }
+.workspace-editor-toolbar { flex-shrink: 0; }
+.workspace-pane-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: 0 0 38px; min-height: 38px; padding: 0 16px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11px; background: var(--bg); }
+.workspace-pane-heading > span { display: flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-pane-heading small { font: inherit; color: var(--subtle); }
+.formula-pane-content { height: 100%; min-height: 0; }
+.formula-source-pane { display: flex; flex-direction: column; min-height: 0; }
+.formula-source-pane > .formula-pane-content { flex: 1; min-height: 0; }
+.preview-frame { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; height: 100%; }
+.preview-frame > .preview-pane { min-height: 0; }
+.formula-preview-frame .math-mode-note { display: none; }

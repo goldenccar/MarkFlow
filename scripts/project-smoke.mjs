@@ -1,4 +1,4 @@
-import { newDocument } from './ui-test-utils.mjs'
+import { openLocalProject, newDocument } from './ui-test-utils.mjs'
 import { _electron as electron, expect } from '@playwright/test'
 import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
@@ -110,7 +110,7 @@ async function chooseProject(folder) {
   await app.evaluate(({ dialog }, destination) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [destination] })
   }, folder)
-  await page.locator('.sidebar').getByRole('button', { name: '打开项目', exact: true }).click()
+  await openLocalProject(page)
   await expect(page.locator('.title-path')).toHaveAttribute('title', folder)
 }
 async function dismissNotice() {
@@ -383,7 +383,7 @@ try {
   await saveDialog(null)
   await save()
   await expect(page.locator('.statusbar')).toContainText('已取消保存')
-  await expect(page.locator('.document-type')).toHaveText('Formula')
+  await expect(page.locator('.document-type')).toHaveText('Fomula')
   await expect(page.locator('.editor-area')).toHaveClass(/layout-source/)
   expect((await savedSettings()).projects).toHaveLength(2)
   expect((await savedSettings()).lastProject).toBe(gitProject)
@@ -400,7 +400,7 @@ try {
   await sourceMode()
   await expect(source()).toContainText('SECOND_SCRATCH')
   await expect(source()).not.toContainText('THIRD_SCRATCH')
-  await expect(page.locator('.document-type')).toHaveText('Formula')
+  await expect(page.locator('.document-type')).toHaveText('Fomula')
   const thirdScratch = (await scratch()).find(item => markdownBody(item.content) === 'THIRD_SCRATCH')
   expect(thirdScratch).toBeTruthy()
   expect(readRegistry(thirdScratch.content)?.complete).toBe(true)

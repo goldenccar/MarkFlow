@@ -1,20 +1,36 @@
 import { expect } from '@playwright/test'
 
+export async function openLocalProject(page) {
+  await page.locator('.sidebar').getByRole('button', { name: '添加项目', exact: true }).click()
+  await page.getByRole('dialog', { name: '添加项目', exact: true }).getByRole('button', { name: /^打开本地项目/ }).click()
+  await expect(page.locator('.project-dialog')).toHaveCount(0)
+  await expect(page.locator('.navigation-shield')).toHaveCount(0)
+}
+
 // User-facing entry points shared by the smoke scripts. These helpers assert the
 // resulting document/module instead of bypassing the UI with internal APIs.
 export async function newDocument(page, label = 'Markdown') {
-  const mode = { Markdown: 'markdown', Formula: 'latex-math' }[label]
+  const mode = { Markdown: 'markdown', Formula: 'latex-math', Fomula: 'latex-math' }[label]
   if (!mode) throw new Error(`Unsupported document module: ${label}`)
+  const formula = mode === 'latex-math', visibleLabel = formula ? 'Fomula' : 'Markdown'
+  const documentTabs = page.locator('.document-tab[draggable]'), previousTabs = await documentTabs.count()
   await page.getByRole('button', { name: '新建标签', exact: true }).click()
   const menu = page.getByRole('menu', { name: '新建文档类型', exact: true })
   await expect(menu).toBeVisible()
-  await menu.getByRole('menuitem', { name: new RegExp(`^${label}\\b`) }).click()
+  await menu.getByRole('menuitem', { name: new RegExp(`^${visibleLabel}\\b`) }).click()
   await expect(menu).toHaveCount(0)
+  if (formula) {
+    const workspace = page.getByRole('region', { name: 'Fomula 文档工作区', exact: true })
+    await expect(workspace).toBeVisible()
+    await workspace.getByRole('button', { name: '公式片段', exact: true }).click()
+    await expect(workspace).toBeHidden()
+  }
   await expect(page.locator('.navigation-shield')).toHaveCount(0)
+  await expect(documentTabs).toHaveCount(previousTabs + 1)
   await expect(page.locator('.app')).toHaveAttribute('data-mode', mode)
-  await expect(page.locator('.document-type')).toHaveText(label)
-  await expect(page.locator('.document-name')).toHaveText(label === 'Formula' ? '未命名.tex' : '未命名.md')
-  await expect(page.locator('.editor-area')).toHaveClass(label === 'Formula' ? /layout-split/ : /layout-preview/)
+  await expect(page.locator('.document-type')).toHaveText(visibleLabel)
+  await expect(page.locator('.document-name:visible')).toHaveText(formula ? '未命名.tex' : '未命名.md')
+  await expect(page.locator('.editor-area')).toHaveClass(formula ? /layout-split/ : /layout-preview/)
 }
 
 export async function showBlockInspector(page) {

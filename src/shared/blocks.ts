@@ -3,12 +3,10 @@ import remarkParse from 'remark-parse'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 
-interface Node {
-  type: string
-  value?: string
-  alt?: string
-  depth?: number
-  children?: Node[]
+export interface MarkdownAst {
+  type: string; value?: string; children?: MarkdownAst[]; depth?: number; url?: string; title?: string | null; alt?: string | null
+  identifier?: string; label?: string; referenceType?: string; ordered?: boolean; start?: number | null; spread?: boolean; checked?: boolean | null
+  lang?: string | null; meta?: string | null; align?: Array<string | null>
   position?: { start: { offset: number; line: number }; end: { offset: number; line: number } }
 }
 
@@ -25,7 +23,15 @@ export interface MarkdownBlock {
 }
 
 const parser = unified().use(remarkParse).use(remarkGfm).use(remarkMath)
-function label(node: Node): string {
+let lastParse: { source: string; tree: MarkdownAst } | undefined
+/** Shared read-only syntax: one exact body, at most 64 Ki UTF-16 units, replaced on the next parse. */
+export function parseMarkdown(source: string): MarkdownAst {
+  if (lastParse?.source === source) return lastParse.tree
+  const tree = parser.parse(source) as MarkdownAst
+  lastParse = source.length <= 64 * 1024 ? { source, tree } : undefined
+  return tree
+}
+function label(node: MarkdownAst): string {
   if (node.type === 'break') return ' '
   if (node.children) return node.children.map(label).join(['list', 'listItem', 'blockquote', 'table', 'tableRow'].includes(node.type) ? ' · ' : '')
   return node.alt ?? node.value ?? (node.type === 'thematicBreak' ? '分隔线' : '')
@@ -33,7 +39,7 @@ function label(node: Node): string {
 
 /** Offsets point into the original string. Gaps and trailing newlines stay in the editor document. */
 export function parseBlocks(content: string): MarkdownBlock[] {
-  const tree = parser.parse(content) as Node
+  const tree = parseMarkdown(content)
   const nodes = (tree.children ?? []).flatMap(node => node.type === 'list' ? node.children ?? [] : [node])
   const blocks = nodes.flatMap(node => {
     if (!node.position) return []

@@ -1,0 +1,17 @@
+{
+  "unknown-version.json": {
+    "stage": "normalize",
+    "code": "UNSUPPORTED_VERSION",
+    "expectation": "Reject version 99 before writing any output."
+  },
+  "broken-reference.json": {
+    "stage": "normalize",
+    "code": "INVALID_REFERENCE",
+    "expectation": "Reject the missing Mark target; do not drop the reference."
+  },
+  "missing-resource.json": {
+    "stage": "resources",
+    "code": "ASSET_MISSING",
+    "expectation": "Fail inside the granted example asset root; do not fetch a substitute."
+  }
+}

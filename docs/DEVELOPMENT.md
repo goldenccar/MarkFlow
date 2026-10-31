@@ -1,5 +1,13 @@
 # MarkFlow 开发与调试
 
+LaTeX 论文模块首次准备：`npm run prepare:tex`，随后 `npm run dev`，从顶部 **＋ → Fomula → LaTeX 文档** 打开。编译环境入口位于第二栏。验证使用 `npm run test:paper`、`npm run test:paper:native`、`npm run test:paper:desktop`；真实编译与桌面检查需已准备运行时。环境、支持范围和安全边界见[论文工作区](LATEX-WORKSPACE.md)。
+
+## 离线文档编译器
+
+`src/compiler` 通过普通函数复用现有 Mark 核心。桌面“生成”面板通过独立 Worker 调用，编译依赖不进入逐次键入路径或主进程启动路径；输出写入由主进程的轻量 `compiler/output.ts` 完成。安装依赖后运行 `npm run compiler:demo -- --font C:/Windows/Fonts/msyh.ttc`，可生成同一资料的 DOCX/PPTX、共享修改、溢出保护和长表格样例。单独使用时可 `npm ci --ignore-scripts`，无需 Electron 二进制或模型密钥。
+
+字段和限制见 [语言规范](compiler/LANGUAGE.md)，SDK/CLI 参数见 [使用说明](compiler/SDK.md)，洁净环境结果见 [复现记录](compiler/REPRODUCIBILITY.md)。编译专项测试：`npm run test:compiler`；默认真实字体测试使用 `C:/Windows/Fonts/msyh.ttc`，其他位置通过 `MARKFLOW_TEST_FONT` 指定同族字体。字体不存在时相关测试会标记跳过，不能算对应平台验证完成。
+
 [返回首页](../README.md) · [使用指南](USAGE.md) · [验证记录](VALIDATION.md)
 
 当前主目标是 Windows 桌面版。以下命令均从仓库根目录执行。源码包含最新界面与 Mark 引擎；`release` 中原有的 0.1.0 安装包对应较早的首版验收，不能用它判断当前源码功能。
@@ -48,8 +56,12 @@ Remove-Item Env:MARKFLOW_USER_DATA
 | 位置 | 主要职责 |
 | --- | --- |
 | [`src/renderer/App.tsx`](../src/renderer/App.tsx) | 项目、标签、当前文档、保存和 UI 状态 |
+| [`src/renderer/ApplicationBar.tsx`](../src/renderer/ApplicationBar.tsx) / [`ProjectSidebar.tsx`](../src/renderer/ProjectSidebar.tsx) | 唯一应用栏与系统项目侧栏；打开/主题/历史/保存同序，共用项目、文件树、归档和 Git 入口 |
+| [`src/renderer/PaperWorkspace.tsx`](../src/renderer/PaperWorkspace.tsx) | LaTeX 引擎正文、编译、PDF、页面设置及第二栏命令；不再拥有私有应用栏或项目侧栏 |
 | [`src/renderer/BlockEditor.tsx`](../src/renderer/BlockEditor.tsx) | 富文本与源码编辑、共享撤销、Mark 操作 |
-| [`src/renderer/Preview.tsx`](../src/renderer/Preview.tsx) | Markdown / 数学预览 |
+| [`src/renderer/documents`](../src/renderer/documents) | Markdown / 数学独立编辑与预览模块 |
+| [`src/renderer/CompileDialog.tsx`](../src/renderer/CompileDialog.tsx) | 桌面 Word / PPT 生成、诊断与结果打开 |
+| [`src/main/compilerService.ts`](../src/main/compilerService.ts) | 原生文件授权、后台编译调度、原子输出 |
 | [`src/shared/blocks.ts`](../src/shared/blocks.ts) | Markdown 原文节点边界 |
 | [`src/shared/richMarkdown.ts`](../src/shared/richMarkdown.ts) | 富文本与 Markdown 原文保真桥接 |
 | [`src/shared/marks.ts`](../src/shared/marks.ts) | Markdown Mark 身份与局部样式适配 |
@@ -64,6 +76,8 @@ npm run debug
 然后在 VS Code 运行 **MarkFlow: attach main process**，连接 `9229`。配置已在 [`.vscode/launch.json`](../.vscode/launch.json)。在 [`src/main/index.ts`](../src/main/index.ts) 的 `files:save` 处理处下断点，可依次检查内容快照、磁盘 revision、写盘结果与 Git 结果。
 
 文件安全逻辑在 [`src/main/files.ts`](../src/main/files.ts)，版本与同步在 [`src/main/git.ts`](../src/main/git.ts)。[`src/preload/index.ts`](../src/preload/index.ts) 是最小桥接层，接口类型在 [`src/shared/types.ts`](../src/shared/types.ts)。文件/Git 调用绑定项目，切换前排队的旧调用会被拒绝；应用没有暴露任意命令执行或通用 IPC 接口。
+
+Paper 创建、打开、导入和独立副本经 `rememberProject` 写入同一份 `Settings.projects`；`paperActivate(id)` 用有效会话中的真实根激活系统 `Library`，preload 同步文件调用作用域。打开章节子文件保留已授权项目根。文本后缀统一使用 `shared/paper.ts` 的 `isPaperTextPath`，辅助 TeX 文本走 Paper 读写，普通 Markdown reader 不扩大到二进制资源。通用移动/删除同时处理 Paper 恢复草稿，重新定位复制草稿和主文件配置并保留旧记录；生成来源的只读保护覆盖普通文件树操作。外来 TeX 的信任确认不因项目登记而取消。
 
 保存和提交分开报告结果：写盘失败不得提交，Git 失败不得让用户误以为正文未保存。修改此流程时，需保留外部 revision 检查、选定快照、暂存隔离及保存期间后续输入保护。详细行为见 [使用指南](USAGE.md#保存本地版本与远端同步)。
 
@@ -96,7 +110,12 @@ npm run build
 | 保存与 Git 安全 | `npm run test:safety` |
 | 实际开发 / 调试启动 | `npm run test:dev` |
 | 项目、首次保存、草稿与竞态 | `node scripts/project-smoke.mjs` |
+| 项目创建、链接复用、重新定位、更新与上传 | `node scripts/project-lifecycle-smoke.mjs` |
+| 跨引擎共用项目侧栏、应用栏与文件操作 | `node scripts/project-workspace-smoke.mjs` |
+| Fomula 页面配置与完整文档 | `node scripts/fomula-desktop-smoke.mjs` |
+| 共用工作区、补全设置与窗口矩阵 | `node scripts/workspace-settings-smoke.mjs` |
 | 富文本及视图切换 | `node scripts/rich-smoke.mjs` |
+| Word / PPT 生成入口、诊断与原文保护 | `node scripts/compiler-desktop-smoke.mjs` |
 | Mark 局部排版 | `node scripts/mark-style-smoke.mjs` |
 | Mark 身份、移动、复制、拆分合并 | `node scripts/mark-identity-smoke.mjs` |
 | 标签、快捷键及工具栏 | `node scripts/tabs-toolbar-smoke.mjs` |
@@ -109,6 +128,8 @@ npm run build
 | 编辑输入性能 | `node scripts/editor-performance.mjs` |
 
 Electron 专项在 `.test-data` 下建立独立文档库和配置，不使用日常文档。复制专项在内存中捕获原生接口调用，不读写系统剪贴板。视觉脚本设置 `OOPSMD_VISUAL_DETAILS=1` 可增加菜单、搜索焦点等截图；`OOPSMD_VISUAL_LABEL` 可为输出目录添加标签。性能测量应在其他测试窗口退出后独占执行。
+
+共享工作区检查要求只有一个 `ApplicationBar` 和一个 `ProjectSidebar`；首栏顺序与侧栏尺寸跨引擎一致，第二栏允许按引擎功能换行。Paper 保存从应用栏触发，文件从系统树选择，主文件选择器先展开“编译选项”。检查入口存在不代表本轮已完成 GUI、全量或安装包验收。
 
 测试结果、测量条件和人工验收边界见 [VALIDATION.md](VALIDATION.md)。不要将历史测试记录或本机速度视为对所有设备与任意文档的保证。
 
@@ -124,7 +145,7 @@ npm run build --prefix src/engine
 
 适配器可显式声明同文档 Mark 引用，复制时重映射被复制子树内的引用，并在事务结束后检查引用有效性。版本化快照可编码、解码并恢复引擎，保留 revision 和退役 ID，不导入撤销历史。这些接口用于后续复用准备，尚未实现 Excel 公式、图表或其他办公格式的适配。
 
-[`src/engine/page.ts`](../src/engine/page.ts) 是独立构建之外的未来草案，没有分页器、页面渲染器或 PDF 编辑 SDK。Word / Excel / PPT / PDF 未接入，不能从类型定义推断这些产品已实现。
+[`src/engine/page.ts`](../src/engine/page.ts) 是独立构建之外的未来草案，没有分页器、页面渲染器或 PDF 编辑 SDK。DOCX / PPTX 生成由独立编译器提供；Word / Excel / PPT / PDF 可视化编辑器未接入，不能从类型定义推断这些产品已实现。
 
 ## 构建与 Windows 安装包
 

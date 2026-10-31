@@ -1,4 +1,4 @@
-import { showBlockInspector } from './ui-test-utils.mjs'
+import { openLocalProject, showBlockInspector } from './ui-test-utils.mjs'
 import { _electron as electron, expect } from '@playwright/test'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
@@ -87,7 +87,7 @@ try {
   passed('40px draggable titlebar aligns with the sidebar and reserves native caption buttons')
 
   await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }) }, library)
-  await page.getByRole('button', { name: '打开项目', exact: true }).click()
+  await openLocalProject(page)
   await tree('Alpha.md').click(); await sourceMode(); await append('ALPHA_EDIT')
   await expect(tabRow('Alpha.md').locator('.tab-dirty')).toBeVisible()
   await tree('Bravo.md').click(); await sourceMode(); await append('BRAVO_EDIT')
@@ -168,6 +168,9 @@ try {
   await sourceMode(); await expect(source()).toContainText('**Find target, find target.**')
   expect(await page.evaluate(async () => { const settings = await window.oops.settings(); return { fontFamily: settings.fontFamily, fontSize: settings.fontSize } })).toEqual(defaultTypography)
   await save(); await page.getByRole('button', { name: '实时预览', exact: true }).click()
+  await expect(page.locator('.editor-area')).toHaveClass(/layout-preview/)
+  await expect(rich()).toBeVisible()
+  await expect(page.locator('.find-bar')).toHaveCount(0)
   await page.getByRole('button', { name: '查找', exact: true }).click()
   await expect(page.getByRole('textbox', { name: '页内查找', exact: true })).toBeFocused()
   await page.getByRole('textbox', { name: '页内查找', exact: true }).fill('target')
@@ -188,8 +191,17 @@ try {
   await showBlockInspector(page)
   await expect(page.locator('.document-navigator-inspector').getByRole('button', { name: '跳转 Mark 1 Long title', exact: true })).toBeEnabled()
   await expect(page.getByText('大纲暂时不可用，正文仍可继续编辑。', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '返回文档目录', exact: true }).click()
+  await page.getByRole('button', { name: '跳转标题 Long title', exact: true }).click()
+  await expect(page.locator('.font-control')).toHaveAttribute('title', '当前 Mark：Long title')
+  await sourceMode()
+  expect(await source().evaluate(element => {
+    const state = element.cmTile.root.view.state
+    return state.doc.lineAt(state.selection.main.head).number
+  })).toBe(1)
+  await page.getByRole('button', { name: '实时预览', exact: true }).click()
   await capture('folder-hierarchy')
-  passed('folder view separates folder hierarchy, selected-folder files and current-document outline')
+  passed('folder view separates hierarchy and files; worker headings navigate to the matching rich block and source line')
 
   await page.keyboard.press('ControlOrMeta+t')
   await expect(page.getByRole('tab')).toHaveCount(8); await expect(rich()).toBeVisible()

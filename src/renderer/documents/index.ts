@@ -21,7 +21,7 @@ const modules: Readonly<Record<ContentMode, DocumentModule>> = {
     getOutline: content => getHeadings(readMarkDocument(content).body),
   },
   'latex-math': {
-    id: 'latex-math', family: 'formula', label: 'Formula', defaultExtension: '.tex', defaultLayout: 'split', layouts: ['split', 'source'],
+    id: 'latex-math', family: 'formula', label: 'Fomula', defaultExtension: '.tex', defaultLayout: 'split', layouts: ['split', 'source'],
     capabilities: { richEditing: false, blockFormatting: false, outline: false, livePreview: true },
     editor: FormulaEditor, preview: FormulaPreview, initialize: initializeFormulaContent, getOutline: () => [],
   },

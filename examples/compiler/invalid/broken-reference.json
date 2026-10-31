@@ -1,0 +1,16 @@
+{
+  "format": "markflow",
+  "version": 1,
+  "documentId": "invalid-fixture",
+  "revision": 1,
+  "marks": [
+    {
+      "id": "invalid-mark",
+      "content": {
+        "kind": "reference",
+        "targetId": "missing-mark"
+      }
+    }
+  ],
+  "assets": []
+}

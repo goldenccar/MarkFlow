@@ -1,3 +1,4 @@
+import { openLocalProject } from './ui-test-utils.mjs'
 import { _electron as electron, expect } from '@playwright/test'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
@@ -29,7 +30,7 @@ try {
   page.on('pageerror', error => errors.push(error.message))
   await expect(page.locator('.document-name')).toHaveText('未命名.md')
   await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }) }, project)
-  await page.locator('.sidebar').getByRole('button', { name: '打开项目', exact: true }).click()
+  await openLocalProject(page)
   await page.locator('.tree-scroll').getByRole('button', { name: 'doc.md', exact: true }).click()
   await page.getByRole('button', { name: '源码', exact: true }).click()
   await expect(page.locator('.editor-area')).toHaveClass(/layout-source/)

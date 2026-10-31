@@ -1,4 +1,4 @@
-import { newDocument } from './ui-test-utils.mjs'
+import { openLocalProject, newDocument } from './ui-test-utils.mjs'
 import { _electron as electron, expect } from '@playwright/test'
 import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -48,7 +48,7 @@ try {
   const source = page.locator('.cm-content')
   async function openLibrary(folder) {
     await app.evaluate(({ dialog }, selected) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] }) }, folder)
-    await page.locator('.sidebar').getByRole('button', { name: '打开项目', exact: true }).click()
+    await openLocalProject(page)
     await page.locator('.tree-scroll').getByRole('button', { name: 'doc.md', exact: true }).click()
     await page.getByRole('button', { name: '源码', exact: true }).click()
     await expect(page.locator('.editor-area')).toHaveClass(/layout-source/)

@@ -1,0 +1,40 @@
+{
+  "format": "markflow-presentation",
+  "version": 1,
+  "target": "pptx",
+  "theme": "standard-v1",
+  "slides": [
+    {
+      "layout": "cover",
+      "title": "cover-title",
+      "marks": [
+        "project-subtitle",
+        "fact-coverage"
+      ]
+    },
+    {
+      "layout": "body",
+      "title": "review-heading",
+      "marks": [
+        "fact-coverage",
+        "check-one",
+        "check-two"
+      ]
+    },
+    {
+      "layout": "image",
+      "title": "image-heading",
+      "marks": [
+        "test-image",
+        "image-context"
+      ]
+    },
+    {
+      "layout": "table",
+      "title": "table-heading",
+      "marks": [
+        "status-table"
+      ]
+    }
+  ]
+}

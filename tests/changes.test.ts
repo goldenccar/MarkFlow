@@ -25,6 +25,16 @@ describe('net grapheme changes', () => {
     assert.equal(changeCount('', '👨‍👩‍👧‍👦🇨🇳e\u0301👍🏽'), 4)
     assert.equal(changeCount('e\u0301', 'a\u0301'), 1)
   })
+  it('trims only unchanged line boundaries, preserving emoji and combining sequences at edits', () => {
+    for (const [before, after, expected] of [
+      ['\nx', 'ax', 1], ['a\nx', 'a\n\u0301x', 1], ['e\n', 'e\u0301\n', 1],
+      ['🇨🇳\nnext', '🇨🇦\nnext', 1], ['👨‍👩‍👧\nnext', '👨‍👩‍👧‍👦\nnext', 1],
+      ['a\n\nb', 'a\nb', 1], ['a\nb', 'b', 2], ['a\nb', 'a\n', 1],
+    ] as const) {
+      assert.equal(changeCount(before, after), expected)
+      assert.equal(changeCount(`same\r\n${before}\r\ntail`, `same\n${after}\ntail`), expected)
+    }
+  })
   it('uses unchanged text to separate replacement runs', () => {
     assert.equal(changeCount('aXXbYYc', 'aQbRRRc'), 5)
     // Equal edges are pinned before Myers matching, including repeated characters.

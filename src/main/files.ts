@@ -2,7 +2,9 @@ import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { defaultSettings, fontFamilies, type ArchiveEntry, type DiskFile, type Draft, type FileEntry, type MutationResult, type Settings } from '../shared/types'
+import { normalizeCompletionSettings, validateCompletionSettings } from '../shared/completionSettings'
 import { isThemePreference } from '../shared/theme'
+import { paperOriginFile } from './paperMarkProject'
 
 const documentExtensions = new Set(['.md', '.markdown', '.mdown', '.txt', '.tex'])
 const ignored = new Set(['.git', 'node_modules'])
@@ -42,8 +44,15 @@ export async function atomicWrite(target: string, content: string | Buffer, befo
     await handle.sync()
     await handle.close()
     handle = undefined
-    await beforeReplace?.()
-    await fs.rename(temporary, target)
+    for (let attempt = 0; ; attempt++) {
+      await beforeReplace?.()
+      try { await fs.rename(temporary, target); break }
+      catch (error) {
+        if (process.platform !== 'win32' || attempt >= 3 || !['EPERM', 'EBUSY', 'EACCES'].includes((error as NodeJS.ErrnoException)?.code ?? '')) throw error
+        // Windows scanners/readers can briefly lock a target. Recheck its revision after each wait.
+        await new Promise(resolve => setTimeout(resolve, 50 * 2 ** attempt))
+      }
+    }
   } finally {
     await handle?.close()
     await fs.rm(temporary, { force: true })
@@ -69,7 +78,7 @@ export class FileService {
   private pending: Promise<unknown> = Promise.resolve()
   private readonly formats = new Map<string, Pick<DiskFile, 'eol' | 'bom'>>()
 
-  constructor(root: string, userData: string, private readonly trash?: (absolutePath: string) => Promise<void>) {
+  constructor(root: string, private readonly userData: string, private readonly trash?: (absolutePath: string) => Promise<void>) {
     this.root = path.resolve(root)
     if (this.root.split(/[\\/]/).some(component => component.toLowerCase() === '.git')) throw new Error('不能把 Git 内部目录作为文档库。')
     const key = process.platform === 'win32' ? this.root.toLowerCase() : this.root
@@ -82,6 +91,96 @@ export class FileService {
     const next = this.pending.then(operation, operation)
     this.pending = next.catch(() => undefined)
     return next
+  }
+
+  /** Copy recovery metadata only. Keep the old scope as a backup even after settings switch roots. */
+  migrateProjectData(targetRoot: string): Promise<void> {
+    return this.serialize(async () => {
+      if (typeof targetRoot !== 'string' || !path.isAbsolute(targetRoot) || targetRoot.includes('\0')) throw new Error('项目目标路径无效。')
+      const target = new FileService(targetRoot, this.userData)
+      const actualRoot = await fs.realpath(target.root)
+      if (!(await fs.stat(actualRoot)).isDirectory() || actualRoot.split(/[\\/]/).some(part => part.toLowerCase() === '.git')) throw new Error('项目目标必须是普通文档目录。')
+      if (samePath(this.draftsDirectory, target.draftsDirectory)) return
+      const profile = await fs.realpath(this.userData).catch(error => { if (isMissing(error)) return path.resolve(this.userData); throw error })
+      const assertStoredPath = async (filename: string) => {
+        let ancestor = path.resolve(filename)
+        while (true) {
+          try {
+            if (!inside(profile, await fs.realpath(ancestor))) throw new Error('恢复记录位置指向设备数据目录之外，迁移已停止。')
+            return
+          } catch (error) {
+            if (!isMissing(error)) throw error
+            if (samePath(ancestor, path.resolve(this.userData))) return
+            ancestor = path.dirname(ancestor)
+          }
+        }
+      }
+      const readStored = async (filename: string): Promise<string | null> => {
+        await assertStoredPath(filename)
+        try {
+          const info = await fs.lstat(filename)
+          if (!info.isFile() || info.isSymbolicLink()) throw new Error('项目恢复记录不是普通文件，原记录已保留。')
+          return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(await fs.readFile(filename))
+        } catch (error) { if (isMissing(error)) return null; throw error }
+      }
+      const plans: Array<{ source: string; target: string; content: string }> = []
+      let names: string[] = []
+      await assertStoredPath(this.draftsDirectory)
+      try { names = await fs.readdir(this.draftsDirectory) } catch (error) { if (!isMissing(error)) throw error }
+      for (const name of names.filter(value => value.endsWith('.json'))) {
+        const source = path.join(this.draftsDirectory, name), original = await readStored(source)
+        if (original === null) throw new Error('迁移期间恢复草稿发生变化，请重试；原记录未作修改。')
+        let draft: StoredDraft
+        try {
+          draft = JSON.parse(original)
+          if (!draft || typeof draft.path !== 'string' || typeof draft.content !== 'string' || typeof draft.revision !== 'string'
+            || !Number.isFinite(Date.parse(draft.updatedAt)) || !samePath(this.draftPath(draft.path), source)
+            || (draft.eol !== undefined && !['\n', '\r\n', '\r'].includes(draft.eol)) || (draft.bom !== undefined && typeof draft.bom !== 'boolean')) throw new Error('Invalid draft')
+          this.assertDocument(draft.path)
+        } catch { throw new Error(`恢复草稿格式无效，迁移已停止，原记录位于 ${source}。`) }
+        await target.resolve(draft.path)
+        plans.push({ source, target: target.draftPath(draft.path), content: original })
+      }
+      const archive = await readStored(this.archiveFilename)
+      if (archive !== null) {
+        let state: ArchiveState
+        try { state = JSON.parse(archive) } catch { throw new Error('归档记录格式无效，迁移已停止，原记录已保留。') }
+        if (!state || typeof state !== 'object') throw new Error('归档记录格式无效，原记录已保留。')
+        await target.archiveEntries(state.entries)
+        if (state.pending) {
+          if (!['move', 'remove'].includes(state.pending.kind)) throw new Error('待完成归档操作无效，原记录已保留。')
+          const from = relativePath(state.pending.from)
+          await target.resolve(from)
+          await target.archiveEntries(state.pending.entries)
+          if (state.pending.kind === 'move') {
+            const to = relativePath(state.pending.to!)
+            if (await target.archivePathExists(from) === await target.archivePathExists(to)) throw new Error('归档记录含无法确定结果的移动，请先恢复归档记录后再重新定位项目。')
+          }
+        }
+        plans.push({ source: this.archiveFilename, target: target.archiveFilename, content: archive })
+      }
+      // Preflight every destination before publishing anything; retries may reuse identical copies.
+      const pending = []
+      for (const plan of plans) {
+        const previous = await readStored(plan.target)
+        if (previous !== null && previous !== plan.content) throw new Error(`目标项目已有不同恢复记录，未覆盖：${plan.target}`)
+        if (previous === null) pending.push(plan)
+      }
+      for (const plan of plans) if (await readStored(plan.source) !== plan.content) throw new Error('迁移期间恢复记录发生变化，请重试；原记录未作修改。')
+      for (const plan of pending) {
+        await assertStoredPath(plan.target)
+        await fs.mkdir(path.dirname(plan.target), { recursive: true })
+        const temporary = path.join(path.dirname(plan.target), `.oopsmd-${randomUUID()}.tmp`)
+        try {
+          const handle = await fs.open(temporary, 'wx', 0o600)
+          try { await handle.writeFile(plan.content); await handle.sync() } finally { await handle.close() }
+          try { await fs.link(temporary, plan.target) }
+          catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'EEXIST' || await readStored(plan.target) !== plan.content) throw new Error(`项目恢复记录复制未完成；旧记录完整保留，已复制的记录可安全重试：${plan.target}`, { cause: error })
+          }
+        } finally { await fs.rm(temporary, { force: true }).catch(() => undefined) }
+      }
+    })
   }
 
   /** Validate every existing ancestor, including junctions and symlinks. */
@@ -214,6 +313,26 @@ export class FileService {
     if ((await fs.lstat(path.join(this.root, relative))).isSymbolicLink()) throw new Error('请直接操作原文件；不能通过符号链接移动或删除目标。')
   }
 
+  /** The system tree must not bypass the read-only contract of generated Mark sources. */
+  async assertMutable(input: string, includeChildren = false): Promise<void> {
+    const target = await this.resolve(input)
+    const reject = () => { throw new Error('此目录含 Mark 生成的只读论文来源，请修改原资料重新生成，或另存为独立 LaTeX 项目。') }
+    let ancestor = target
+    while (true) {
+      try { if ((await fs.lstat(ancestor)).isDirectory() && await exists(path.join(ancestor, paperOriginFile))) reject() }
+      catch (error) { if (!isMissing(error)) throw error }
+      const parent = path.dirname(ancestor)
+      if (parent === ancestor) break
+      ancestor = parent
+    }
+    const scan = async (directory: string): Promise<void> => {
+      const entries = await fs.readdir(directory, { withFileTypes: true })
+      if (entries.some(entry => entry.name.toLowerCase() === paperOriginFile)) reject()
+      for (const entry of entries) if (entry.isDirectory() && !entry.isSymbolicLink() && !ignored.has(entry.name.toLowerCase())) await scan(path.join(directory, entry.name))
+    }
+    if (includeChildren && (await fs.lstat(target)).isDirectory()) await scan(target)
+  }
+
   async read(input: string): Promise<DiskFile> {
     const relative = relativePath(input)
     this.assertDocument(relative)
@@ -232,6 +351,7 @@ export class FileService {
 
   write(input: string, content: string, revision: string): Promise<DiskFile> {
     return this.serialize(async () => {
+      await this.assertMutable(input)
       if (typeof content !== 'string' || content.includes('\0')) throw new Error('文档内容必须是有效文本。')
       const current = await this.read(input)
       if (current.revision !== revision) throw new Error('文件已被外部程序修改。请先处理冲突；磁盘文件和恢复草稿均未覆盖。')
@@ -241,6 +361,7 @@ export class FileService {
       const bytes = Buffer.from(`${current.bom ? '\uFEFF' : ''}${text.replace(/\n/g, current.eol)}`, 'utf8')
       const metadata = await fs.stat(target)
       await atomicWrite(target, bytes, async () => {
+        await this.assertMutable(input)
         const validated = await this.resolve(input)
         if (!samePath(validated, target) || digest(await fs.readFile(validated)) !== revision) throw new Error('保存期间文件已发生外部修改，已取消写入。')
       }, metadata.mode)
@@ -268,7 +389,8 @@ export class FileService {
     return this.serialize(async () => {
       const relative = relativePath(draft.path)
       this.assertDocument(relative)
-      await this.resolve(relative)
+      // A disconnected/moved project must still be able to protect its open buffer in device data.
+      try { await this.resolve(relative) } catch (error) { if (!isMissing(error)) throw error }
       if (typeof draft.content !== 'string' || typeof draft.revision !== 'string' || !Number.isFinite(Date.parse(draft.updatedAt))) throw new Error('恢复草稿格式无效。')
       await fs.mkdir(this.draftsDirectory, { recursive: true })
       const stored: StoredDraft = { ...draft, path: relative, ...this.formats.get(draft.revision) }
@@ -337,6 +459,7 @@ export class FileService {
   create(input: string, directory: boolean): Promise<void> {
     return this.serialize(async () => {
       const relative = relativePath(input)
+      await this.assertMutable(relative)
       const target = await this.resolve(relative)
       if (directory) await fs.mkdir(target)
       else {
@@ -350,6 +473,7 @@ export class FileService {
   createDocument(input: string, content: string): Promise<DiskFile> {
     return this.serialize(async () => {
       const relative = relativePath(input)
+      await this.assertMutable(relative)
       this.assertDocument(relative)
       if (typeof content !== 'string' || content.includes('\0')) throw new Error('文档内容必须是有效文本。')
       const target = await this.resolve(relative)
@@ -364,6 +488,7 @@ export class FileService {
         await handle.sync()
         await handle.close(); handle = undefined
         if (!samePath(await this.resolve(relative), target)) throw new Error('保存期间目标路径发生变化，未保存文档。')
+        await this.assertMutable(relative)
         // Publishing a fully written hard link is atomic and never replaces an existing file.
         await fs.link(temporary, target)
         published = true
@@ -410,6 +535,8 @@ export class FileService {
       if (sourceRelative === targetRelative) return { path: targetRelative, affectedLinks: [] }
       const source = await this.resolve(sourceRelative)
       const target = await this.resolve(targetRelative)
+      await this.assertMutable(sourceRelative, true)
+      await this.assertMutable(targetRelative)
       await this.assertNotLink(sourceRelative)
       const sourceStat = await fs.lstat(source)
       if (sourceStat.isDirectory() && inside(source, target) && !samePath(source, target)) throw new Error('不能把文件夹移动到它自身内部。')
@@ -460,6 +587,7 @@ export class FileService {
       const relative = relativePath(input)
       if (!this.trash) throw new Error('系统回收站不可用，未删除文件。')
       const target = await this.resolve(relative)
+      await this.assertMutable(relative, true)
       await this.assertNotLink(relative)
       await fs.lstat(target)
       const drafts = (await this.allDrafts()).filter(record => beneath(record.draft.path, relative))
@@ -482,7 +610,7 @@ export class FileService {
   }
 }
 
-function validatedSettings(input: unknown): Settings {
+function validatedSettings(input: unknown, strictCompletion = true): Settings {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('设置格式无效。')
   const settings = { ...defaultSettings, ...input } as Settings
   if (typeof settings.autoCommit !== 'boolean' || !Number.isSafeInteger(settings.threshold) || settings.threshold < 1
@@ -496,13 +624,17 @@ function validatedSettings(input: unknown): Settings {
     return { root: path.resolve(entry.root), path: relativePath(entry.path) }
   })
   const raw = input as Partial<Settings>
-  const projectEntries = raw.projects === undefined ? recent.map(entry => ({ root: entry.root, lastOpened: '1970-01-01T00:00:00.000Z' })) : raw.projects
+  const projectEntries: Settings['projects'] = raw.projects === undefined ? recent.map(entry => ({ root: entry.root, lastOpened: '1970-01-01T00:00:00.000Z' })) : raw.projects
   if (!Array.isArray(projectEntries)) throw new Error('项目记录格式无效。')
   const projects: Settings['projects'] = []
   for (const project of projectEntries) {
     if (!project || typeof project.root !== 'string' || !path.isAbsolute(project.root) || project.root.includes('\0') || typeof project.lastOpened !== 'string' || !Number.isFinite(Date.parse(project.lastOpened))) throw new Error('项目路径或上次打开时间无效。')
+    if (project.syncMode !== undefined && !['git', 'external'].includes(project.syncMode)) throw new Error('项目同步方式无效。')
+    if (project.remote !== undefined && (typeof project.remote !== 'string' || !project.remote.trim() || project.remote.length > 4096 || /[\x00-\x1f\x7f]/.test(project.remote))) throw new Error('项目远端来源无效。')
     const root = path.resolve(project.root)
-    if (!projects.some(existing => samePath(existing.root, root))) projects.push({ root, lastOpened: project.lastOpened })
+    if (!projects.some(existing => samePath(existing.root, root))) projects.push({ root, lastOpened: project.lastOpened,
+      ...(project.syncMode !== undefined ? { syncMode: project.syncMode } : {}), ...(project.remote !== undefined ? { remote: project.remote } : {}),
+    })
   }
   const lastProject = raw.lastProject === undefined ? projects[0]?.root ?? null : raw.lastProject
   if (lastProject !== null && (typeof lastProject !== 'string' || !projects.some(project => samePath(project.root, lastProject)))) throw new Error('上次项目不在已授权项目中。')
@@ -512,11 +644,12 @@ function validatedSettings(input: unknown): Settings {
     if (position.previewScroll !== undefined && (!Number.isFinite(position.previewScroll) || position.previewScroll < 0)) throw new Error('预览阅读位置无效。')
     positions[key] = { cursor: position.cursor, scroll: position.scroll, ...(position.previewScroll !== undefined ? { previewScroll: position.previewScroll } : {}) }
   }
-  return { autoCommit: settings.autoCommit, threshold: settings.threshold, theme: settings.theme, fontSize: settings.fontSize, fontFamily: settings.fontFamily, lineHeight: settings.lineHeight, lineWidth: settings.lineWidth, layout: settings.layout, recent, projects, lastProject, positions }
+  const completion = (strictCompletion ? validateCompletionSettings : normalizeCompletionSettings)(raw.completion)
+  return { completion, autoCommit: settings.autoCommit, threshold: settings.threshold, theme: settings.theme, fontSize: settings.fontSize, fontFamily: settings.fontFamily, lineHeight: settings.lineHeight, lineWidth: settings.lineWidth, layout: settings.layout, recent, projects, lastProject, positions }
 }
 
 export async function getSettings(userData: string): Promise<Settings> {
-  try { return validatedSettings(JSON.parse(await fs.readFile(path.join(userData, 'settings.json'), 'utf8'))) }
+  try { return validatedSettings(JSON.parse(await fs.readFile(path.join(userData, 'settings.json'), 'utf8')), false) }
   catch (error) { if (isMissing(error)) return validatedSettings(defaultSettings); throw error }
 }
 

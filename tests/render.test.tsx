@@ -1,11 +1,13 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { Preview } from '../src/renderer/Preview'
+import { getDocumentModule } from '../src/renderer/documents'
+import { MarkdownPreview } from '../src/renderer/documents/MarkdownPreview'
 import { assetUrl, getHeadings, resolveLink } from '../src/renderer/markdown'
 import { ensureMarkDocument, parseMarks, setMarkStyle } from '../src/shared/marks'
 
 function render(content: string, mode: 'markdown' | 'latex-math' = 'markdown') {
+  const Preview = getDocumentModule(mode).preview
   return renderToStaticMarkup(<Preview content={content} mode={mode} path="笔记/当前 文档.md" onNavigate={() => {}} onExternal={() => {}} />)
 }
 
@@ -70,7 +72,7 @@ describe('Markdown and math rendering', () => {
     assert.ok(render('![图](../附件/样例%20图.png)').includes(assetUrl('附件/样例 图.png')))
   })
   it('does not resolve untitled document images against a previously active project', () => {
-    const result = renderToStaticMarkup(<Preview content="![图](secret.png)" mode="markdown" path="未命名.md" localFiles={false} onNavigate={() => {}} onExternal={() => {}} />)
+    const result = renderToStaticMarkup(<MarkdownPreview content="![图](secret.png)" path="未命名.md" localFiles={false} onNavigate={() => {}} onExternal={() => {}} />)
     assert.ok(!result.includes('<img'))
     assert.ok(!result.includes('oops-asset:'))
   })

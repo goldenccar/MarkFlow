@@ -1,7 +1,10 @@
 import type { ContentMode, ResolvedTheme } from '../shared/types'
+import type { CompletionEngine, CompletionSettings } from '../shared/completionSettings'
 
 export interface EditorHandle { focus(): void; jumpTo(line: number): void; find(): void; undo(): void; redo(): void }
 export interface EditorProps {
+  completion?: CompletionSettings
+  completionEngine?: CompletionEngine
   documentKey: string
   value: string
   mode: ContentMode

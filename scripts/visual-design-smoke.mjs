@@ -1,4 +1,4 @@
-import { showBlockInspector, setTheme } from './ui-test-utils.mjs'
+import { openLocalProject, showBlockInspector, setTheme } from './ui-test-utils.mjs'
 import { _electron as electron, expect } from '@playwright/test'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -175,7 +175,7 @@ try {
   await page.waitForLoadState('domcontentloaded'); expect(page.url()).toMatch(/^file:/)
   await expect(rich()).toBeVisible()
   await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }) }, library)
-  await page.getByRole('button', { name: '打开项目', exact: true }).click()
+  await openLocalProject(page)
   for (const name of ['项目索引.md', '设计记录.md', mathName, longName]) await open(name)
   await showBlockInspector(page)
   await expect(outline().locator('button').first()).toBeEnabled()

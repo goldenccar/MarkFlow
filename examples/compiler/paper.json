@@ -1,0 +1,11 @@
+{
+  "format": "markflow-paper-presentation",
+  "version": 1,
+  "template": "chinese",
+  "title": "青屿记录：共享 Mark 的论文呈现",
+  "authors": ["MarkFlow 示例团队"],
+  "abstract": "本例复用 content.json 中的同一份文字、事实、表格与图片。所有数据均为虚构测试材料；论文源码与 PDF 是派生产物，原始 Mark 文档仍是唯一事实来源。",
+  "references": [
+    { "id": "knuth1984", "type": "book", "author": "Donald E. Knuth", "title": "The TeXbook", "publisher": "Addison-Wesley", "year": "1984" }
+  ]
+}

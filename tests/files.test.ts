@@ -3,7 +3,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
-import { FileService, getSettings, putSettings } from '../src/main/files'
+import { atomicWrite, FileService, getSettings, putSettings } from '../src/main/files'
 import { defaultSettings } from '../src/shared/types'
 
 async function fixture() {
@@ -20,6 +20,134 @@ async function fixture() {
   })
   return { temporary, root, userData, service, trashed, cleanup: () => fs.rm(temporary, { recursive: true, force: true }) }
 }
+
+test('system tree mutations cannot bypass generated Paper source protection, including parent and child project views', async () => {
+  const f = await fixture()
+  try {
+    const generated = path.join(f.root, 'generated'), sections = path.join(generated, 'sections')
+    await fs.mkdir(sections, { recursive: true })
+    await fs.writeFile(path.join(generated, 'markflow-origin.json'), '{}')
+    await fs.writeFile(path.join(sections, 'part.tex'), 'Original generated source')
+    const file = await f.service.read('generated/sections/part.tex')
+    await assert.rejects(f.service.write(file.path, 'Change', file.revision), /Mark/)
+    await assert.rejects(f.service.create('generated/new.tex', false), /Mark/)
+    await assert.rejects(f.service.create('generated/folder', true), /Mark/)
+    await assert.rejects(f.service.createDocument('generated/new.md', 'New'), /Mark/)
+    await assert.rejects(f.service.move('generated', 'renamed'), /Mark/)
+    await assert.rejects(f.service.move(file.path, 'part.tex'), /Mark/)
+    await assert.rejects(f.service.remove('generated'), /Mark/)
+    await assert.rejects(f.service.remove('generated/markflow-origin.json'), /Mark/)
+    const child = new FileService(sections, f.userData)
+    const nested = await child.read('part.tex')
+    await assert.rejects(child.write('part.tex', 'Change', nested.revision), /Mark/)
+    await f.service.archive('generated')
+    assert.equal((await f.service.listArchive())[0].path, 'generated')
+    assert.equal(await fs.readFile(path.join(sections, 'part.tex'), 'utf8'), file.content)
+    assert.deepEqual(f.trashed, [])
+  } finally { await f.cleanup() }
+})
+
+test('recovery exports retain the previous target if replacement is interrupted', async () => {
+  const f = await fixture()
+  try {
+    const target = path.join(f.root, 'recovery.md')
+    await fs.writeFile(target, 'existing recovery')
+    await assert.rejects(atomicWrite(target, 'new recovery', async () => { throw new Error('replacement interrupted') }), /replacement interrupted/)
+    assert.equal(await fs.readFile(target, 'utf8'), 'existing recovery')
+    assert.deepEqual(await fs.readdir(f.root), ['recovery.md'])
+    await atomicWrite(target, 'new recovery')
+    assert.equal(await fs.readFile(target, 'utf8'), 'new recovery')
+  } finally { await f.cleanup() }
+})
+
+for (const code of ['EPERM', 'EBUSY', 'EACCES']) test(`Windows atomic replacement retries one transient ${code} and rechecks before replacing`, { skip: process.platform !== 'win32' }, async context => {
+  const f = await fixture()
+  try {
+    const target = path.join(f.root, 'note.md')
+    await fs.writeFile(target, 'original')
+    const rename = fs.rename.bind(fs)
+    let attempts = 0, checks = 0
+    context.mock.method(fs, 'rename', async (from: Parameters<typeof fs.rename>[0], to: Parameters<typeof fs.rename>[1]) => {
+      assert.equal(to, target)
+      if (++attempts === 1) throw Object.assign(new Error('transient target lock'), { code })
+      await rename(from, to)
+    })
+    await atomicWrite(target, 'saved', async () => { checks++; assert.equal(await fs.readFile(target, 'utf8'), 'original') })
+    assert.equal(attempts, 2); assert.equal(checks, 2)
+    assert.equal(await fs.readFile(target, 'utf8'), 'saved')
+    assert.deepEqual(await fs.readdir(f.root), ['note.md'])
+  } finally { context.mock.restoreAll(); await f.cleanup() }
+})
+
+test('Windows retry refuses an external edit between attempts and keeps the recovery draft', { skip: process.platform !== 'win32' }, async context => {
+  const f = await fixture()
+  try {
+    const filename = path.join(f.root, 'note.md')
+    await fs.writeFile(filename, 'original')
+    const target = await fs.realpath(filename), file = await f.service.read('note.md')
+    await f.service.draft({ path: file.path, content: 'unsaved recovery', revision: file.revision, updatedAt: new Date().toISOString() })
+    const rename = fs.rename.bind(fs)
+    let attempts = 0
+    context.mock.method(fs, 'rename', async (from: Parameters<typeof fs.rename>[0], to: Parameters<typeof fs.rename>[1]) => {
+      if (to !== target) return rename(from, to)
+      attempts++
+      await fs.writeFile(target, 'external replacement')
+      throw Object.assign(new Error('transient target lock'), { code: 'EPERM' })
+    })
+    await assert.rejects(f.service.write('note.md', 'local save', file.revision), /保存期间文件已发生外部修改/)
+    assert.equal(attempts, 1, 'the retry must revalidate before attempting another rename')
+    assert.equal(await fs.readFile(target, 'utf8'), 'external replacement')
+    assert.equal((await f.service.getDraft('note.md'))?.content, 'unsaved recovery')
+    assert.deepEqual(await fs.readdir(f.root), ['note.md'])
+  } finally { context.mock.restoreAll(); await f.cleanup() }
+})
+
+test('Windows persistent replacement failure is bounded and retains the original error and target', { skip: process.platform !== 'win32' }, async context => {
+  const f = await fixture()
+  try {
+    const target = path.join(f.root, 'note.md'), failure = Object.assign(new Error('persistent lock'), { code: 'EACCES' })
+    await fs.writeFile(target, 'original')
+    let attempts = 0, checks = 0
+    context.mock.method(fs, 'rename', async () => { attempts++; throw failure })
+    await assert.rejects(atomicWrite(target, 'local save', async () => { checks++ }), error => error === failure)
+    assert.equal(attempts, 4); assert.equal(checks, 4)
+    assert.equal(await fs.readFile(target, 'utf8'), 'original')
+    assert.deepEqual(await fs.readdir(f.root), ['note.md'])
+  } finally { context.mock.restoreAll(); await f.cleanup() }
+})
+
+test('non-Windows replacement errors and non-transient failures are not retried', async context => {
+  const f = await fixture(), platform = Object.getOwnPropertyDescriptor(process, 'platform')!
+  try {
+    const target = path.join(f.root, 'note.md')
+    await fs.writeFile(target, 'original')
+    for (const [system, code] of [['linux', 'EPERM'], ['win32', 'ENOSPC'], ['win32', 'EXDEV']]) {
+      Object.defineProperty(process, 'platform', { ...platform, value: system })
+      let attempts = 0
+      const failure = Object.assign(new Error(code), { code })
+      context.mock.method(fs, 'rename', async () => { attempts++; throw failure })
+      await assert.rejects(atomicWrite(target, 'local save'), error => error === failure)
+      assert.equal(attempts, 1)
+      context.mock.restoreAll()
+    }
+    assert.equal(await fs.readFile(target, 'utf8'), 'original')
+    assert.deepEqual(await fs.readdir(f.root), ['note.md'])
+  } finally { Object.defineProperty(process, 'platform', platform); context.mock.restoreAll(); await f.cleanup() }
+})
+
+test('replacement guard errors are never retried even when their error code is transient', async context => {
+  const f = await fixture()
+  try {
+    const target = path.join(f.root, 'note.md'), failure = Object.assign(new Error('guard denied'), { code: 'EACCES' })
+    await fs.writeFile(target, 'original')
+    let checks = 0, attempts = 0
+    context.mock.method(fs, 'rename', async () => { attempts++ })
+    await assert.rejects(atomicWrite(target, 'local save', async () => { checks++; throw failure }), error => error === failure)
+    assert.equal(checks, 1); assert.equal(attempts, 0)
+    assert.equal(await fs.readFile(target, 'utf8'), 'original')
+    assert.deepEqual(await fs.readdir(f.root), ['note.md'])
+  } finally { context.mock.restoreAll(); await f.cleanup() }
+})
 
 test('Unicode and space paths share one sorted tree; text reads preserve the original file', async () => {
   const f = await fixture()

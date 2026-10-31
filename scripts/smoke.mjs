@@ -1,4 +1,4 @@
-import { newDocument } from './ui-test-utils.mjs'
+import { openLocalProject, newDocument } from './ui-test-utils.mjs'
 import { _electron as electron, expect } from '@playwright/test'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -36,7 +36,7 @@ try {
   await expect(page.locator('.editor-area')).toHaveClass(/layout-preview/)
   await expect(page.locator('.rich-editor .ProseMirror')).toHaveAttribute('contenteditable', 'true')
   await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }) }, library)
-  await page.locator('.sidebar').getByRole('button', { name: '打开项目', exact: true }).click()
+  await openLocalProject(page)
   await page.locator('.tree-scroll').getByRole('button', { name: '开始.md', exact: true }).click()
   await page.getByRole('button', { name: '对照', exact: true }).click()
   await expect(page.locator('.editor-area')).toHaveClass(/layout-split/)

@@ -1,6 +1,10 @@
 import type { DocumentContent } from './types'
 
 const normalize = (source: string) => source.replace(/\r\n|\r/g, '\n')
+/** Only actual preamble/document commands select the PDF renderer, not commented examples. */
+export function isLatexDocument(source: string): boolean {
+  return /^\s*\\(?:documentclass(?:\s*\[[^\]\r\n]*\])?\s*\{|begin\s*\{document\})/m.test(source)
+}
 export function initializeFormulaContent(source: string, diskSource: string): DocumentContent {
   return { content: normalize(source), cleanContent: normalize(diskSource) }
 }

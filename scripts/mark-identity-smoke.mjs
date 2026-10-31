@@ -1,4 +1,4 @@
-import { showBlockInspector } from './ui-test-utils.mjs'
+import { openLocalProject, showBlockInspector } from './ui-test-utils.mjs'
 import { _electron as electron, expect } from '@playwright/test'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
@@ -83,7 +83,7 @@ try {
   await page.waitForTimeout(400)
   expect(await page.evaluate(() => window.oops.listUntitled())).toEqual([])
   await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }) }, library)
-  await page.getByRole('button', { name: '打开项目', exact: true }).click(); await open('alpha.md')
+  await openLocalProject(page); await open('alpha.md')
   await expect(outline().locator('button')).toHaveCount(3)
   const originalIds = await ids()
   expect(originalIds.every(id => uuid.test(id))).toBe(true); expect(new Set(originalIds).size).toBe(3)

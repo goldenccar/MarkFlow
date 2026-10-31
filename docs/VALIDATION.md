@@ -1,6 +1,86 @@
 # MarkFlow 0.1.0 验证记录
 
-更新：2026-10-28（Asia/Shanghai）。各节按验证日期区分，历史记录不代表当前版本重新验收。
+更新：2026-10-31（Asia/Shanghai）。各节按验证日期区分，历史记录不代表当前版本重新验收。
+
+## LaTeX 原生窗口按钮配色（2026-10-31）
+
+- 修复进入 LaTeX 页面时没有同步 Windows 原生关闭/最小化/最大化区域配色的问题：窗口外观 effect 现在同时监听完整文档工作区的激活状态。复现前为 LaTeX 蓝灰顶栏搭配 Markdown 灰绿窗口按钮区域。
+- `scripts/window-theme-smoke.mjs` 在隔离 Electron 窗口执行实际 `setTitleBarOverlay`，核对其背景、符号颜色与页面主题变量。浅色、深色及模拟系统深浅变化下，Markdown → LaTeX → Markdown 共 **12/12** 检查通过，渲染异常 **0**；修复前同一脚本在首次进入 LaTeX 时失败。
+- 主题单元测试 **4/4**、类型检查及构建通过。日志：`.test-data/window-theme-before.log`、`.test-data/window-theme-after.log`、`.test-data/window-theme-unit.log`、`.test-data/window-theme-build.log`。本轮未重验 macOS 或安装包。
+
+## 单一应用栏与系统项目侧栏（2026-10-31，后续更新）
+
+- Markdown、公式片段和完整 LaTeX 只挂载一个 `ApplicationBar` 与一个 `ProjectSidebar`。首栏固定为打开文件、主题、历史、保存，编译、页面设置、环境、导出和生成放在第二栏；Paper 不再持有第二份项目列表或文件树。
+- 全量测试 **409/409** 通过；随后新增 PDF 有效性判断的回归，相关模型 **7/7** 通过。类型检查、构建及差异格式检查通过。全量日志：`.test-data/shared-shell-tests.log`；构建：`.test-data/shared-shell-build.log`。
+- Windows Electron 最终 **13/13** 组桌面流程通过，前端异常 **0**：系统项目切换、未保存 TeX 恢复、真实拖动与改名后的撤销/重做、主文件路径同步、归档/删除、实际两页 PDF、干净文件外部刷新、脏文件冲突保护、补全和页面设置、生成稿只读及返回原文 Mark。
+- 补充边界：Paper A 激活时拖入 B 的真实 Markdown 文件，正文和项目都切到 B，保存不写入 A；先编译后保存相同正文，文件监听刷新不会让 PDF 误标过期或重建 canvas。修复保存后旧恢复稿残留引起的假冲突。
+- 三个编辑模式在 **1440／1100／920** 宽度、深浅主题下的 **18** 个组合均无横向溢出。首栏四项同序且高 **44px**；侧栏沿用相同组件和尺寸，第二栏按功能数量换行。最终桌面证据：`D:/MarkFlow-Projects-20261031/project-workspace-DzDq4A/results.json` 及同目录截图。
+- 本地试用窗口已加载最终构建，独立项目 `.test-data/shared-shell-preview-projects/统一项目试用` 同时包含 Markdown 与 LaTeX；实际两页 PDF 状态为最新。截图：`.test-data/shared-shell-final-preview.png`。本轮未重验 macOS、安装包或真实在线 GitHub 凭据；不以组件复用宣称整体代码减半或性能提升 50%。
+
+## 共用工作区与按引擎配置补全（2026-10-31）
+
+- 最终类型检查与生产构建通过，115 项定向自动测试通过，覆盖补全配置与热更新、保存校验、文档识别、页面设置、Mark 历史、富文本及 LaTeX 输出。日志：`.test-data/workspace-build.log`、`.test-data/workspace-tests.log`。
+- Windows Electron 12 组真实桌面流程通过，渲染异常为 0：自定义规则实际插入、三引擎隔离、关闭触发后 Tab 缩进、旧撤销记录、重启恢复、完整文档自定义、Esc 后富文本缩进不重弹、真实 3 页 PDF、页面配置开合/快速切换/减少动态效果、未应用表单保留及 Esc 返焦点、通用字号继承、共用侧栏开关。
+- Markdown、公式片段、完整 LaTeX 编辑态各在 1440／1100／920 宽度、深浅主题下核验（18 组截图）：路径栏、工具栏和侧栏尺寸一致，无横向溢出。最终矩阵使用已重新编译的完整文档；PDF 节点及滚动稳定性由独立的开合流程验证。
+- 桌面脚本：`scripts/workspace-settings-smoke.mjs`；结果与截图：`D:/MarkFlow-Workspace-20261031/workspace-settings-vvUSm7/results.json`。另打开独立的两页中文试用项目，实际编译成功，最终截图：`.test-data/workspace-final-preview.png`。保留已有用户窗口和草稿。
+- 本轮为 Windows 开发构建验收，不代表安装包、macOS 或物理输入法验收。
+
+## Fomula 统一交互与页面配置（2026-10-31）
+
+- 最终类型检查、生产构建通过；117 项定向自动测试全部通过，覆盖补全/排序/缩进、文档识别、页面设置、项目会话、Mark 身份/历史与 LaTeX 输出。日志：`.test-data/fomula-build.log`、`.test-data/fomula-tests.log`。
+- Windows Electron 的 Fomula 8 组综合流程通过：Markdown 排版与源码补全、公式补全/Tab/撤销、第二份公式独立标签且原文保留、页面配置输入框撤销不修改源码、实际两页 A5 横向 PDF 的页眉页脚与页码、同名创建、连续关闭重开 7 次、完整 `.tex` 与片段分别进入 PDF/KaTeX。证据：`D:/MarkFlow-Fomula-Desktop-20261031/fomula-GnLKQY/results.json`。
+- Mark 入口回归 5 组通过：表单、只读源码与来源映射、实际 XeLaTeX PDF/源包、独立副本、未保存 Markdown 快照。证据：`D:/MarkFlow-Fomula-Desktop-20261031/paper-mark-JE0dzU/results.json`。两轮渲染异常均为 0。最终 Fomula 回归另覆盖原生菜单新建、源码/对照切换与设置面板收起；900px 以下源码与文件栏布局在最终预览中另核验。
+- 页面配置原生验证生成 3 页中文 A5 横向 PDF，包含长页眉自动换行、PNG、标题/作者/页码占位符、首页隐藏；英文单栏及双栏也成功。独立脚本：`scripts/paper-page-settings-smoke.ts`；证据：`.test-data/paper-page-settings-9PzKVu/`。复杂外来模板冲突会明确拒绝表单覆盖。
+- 本轮未重做安装包、macOS 或实体输入法验收；旧交付与待办边界保持原状。
+
+## 保留 Note / PPT 的精简与性能优化（2026-10-31）
+
+- 生产源码统计与同机前后数据见 [本轮审查](PROJECT-AUDIT.md)。基线包含上一轮全部未提交功能，没有通过旧 Git HEAD 或排除新模块放大减少量；源码减半和全软件提速 50% 尚未达成。
+- **全量自动化 331/331 通过，无失败、无跳过。** 日志 `.test-data/lean-all-tests.log`。末轮列表编号/CRLF 守卫修改后，**renderer 专项 41/41** 再次通过，日志 `.test-data/lean-renderer-final-tests.log`；不把重叠用例相加。最终类型检查、生产构建、独立 Mark 引擎类型检查及 `git diff --check` 通过，构建日志 `.test-data/lean-build.log`。
+- **实际 Windows Electron 42 组通过**：标签/工具栏 9、富文本/Formula 10、DOCX/PPTX 生成 7、论文编译/PDF 8、菜单键盘/焦点 8。所有页面异常为空；富文本控制台异常为空。日志 `.test-data/lean-{tabs-toolbar,rich-final,compiler,paper,menu}.log`。标签检查在末轮列表正则补丁前构建执行，受补丁影响的富文本及后续检查已在最终构建通过。
+- **16 个样式对照状态一致**：Markdown/Formula、深浅色、1440/1100/920 宽度，以及设置、生成面板、新建菜单、论文首页；比较计算样式和几何，保留减弱动效及焦点检查。证据 `.test-data/visual-css-equivalence-final-1CWys5/report.json`。菜单补测覆盖方向循环、Home/End、跳过禁用项、Escape 回焦点、外点/窗口变化关闭，且源文件字节不变。
+- 原生 DOCX/PPTX 产物的关键 XML、关系、图片及 manifest 与基线一致；37 项输入边界和 6 类特殊 JSON 的快照/历史对照通过。Unicode 计数与旧实现对照 15,000 组通过。具体样本和计时范围见审查报告，不用局部算法计时替代完整生成或桌面响应。
+- 全量回归结束后再进行三轮前后桌面对照：1,000 项列表输入响应中位 99 → 49 ms，48 次输入中的大于 50 ms 主线程任务 48 → 7 次；普通段落无同等级提升，部分峰值并未改善。结果 `.test-data/lean-desktop-quiet-comparison.json`，完整口径及波动记录见审查报告。
+- 未重新验收新安装包、macOS、实体中文输入法或 Word/WPS 原生视觉排版；完整 TeX 分发、Mark → LaTeX 与 Note 页式编辑器继续保持未完成状态。本轮没有新增依赖或推送 GitHub。
+
+## LaTeX 论文工作区（2026-10-30）
+
+- PRD 与 L0–L4 清单统一记录已接入能力及剩余缺口；Note 模板/分页 NP0–NP7 和原有办公场景继续保留。操作见 [论文工作区说明](LATEX-WORKSPACE.md)。
+- **类型检查及生产构建通过；全量测试 327/327 通过，无失败、无跳过。** 日志 `.test-data/paper-build.log`、`.test-data/paper-all-tests.log`。后续论文专项复测 **16/16**，与全量用例重叠，不累加。
+- **原生 TeX 验证 7/7 通过。** 中文、英文单栏/双栏真实生成 PDF，三类源包重新导入后编译成功，嵌套主文件与 Biber 文献样例通过。检查了中文文本、未保存章节及文献解析；结果 `.test-data/paper-native-TkdW0X/results.json`。另验证真实 SyncTeX 双向定位。仅代表本机样例，不是任意期刊模板兼容声明。
+- **Windows Electron 论文检查 8/8 通过，页面异常为空。** 实际新建中文论文、PDF.js 中文跨页显示、未保存内容编译/导出、失败保留旧 PDF、保存及工作区切换、草稿恢复、外部修改保护、小窗口检查。结果 `.test-data/paper-desktop-LDLEeS/results.json`，截图同目录 `paper-two-pages.png`、`paper-narrow.png`。原生文件选择器仅在隔离测试里替换为固定路径。
+- **既有桌面回归通过：标签/工具栏 9/9，Formula 3/3。** Formula 验证渲染、首次保存、撤销重做、源码/对照及 Markdown 标签往返。日志 `.test-data/latex-module-tabs-toolbar-retry.log`、`.test-data/latex-module-formula-regression.log`；页面异常为空。标签测试修正了布局切换后的等待时序，未改生产行为。
+- 修复中文 PDF 的本地 CMap 资源加载、Windows 长路径下 Biber 缓存启动，以及旧 PDF 在新编译被丢弃后的资源保留问题。编译用全部未保存缓冲的快照，不自动写回原工程；导出源包对应所显示产物的快照。
+- 当前以本机源码构建试用，未生成新安装包。应用内环境安装、完整离线宏包冻结、macOS 验收、Overleaf 性能对照、Mark → LaTeX 尚未完成。外来项目需明确信任；禁用 shell escape、固定命令及快照目录不等于操作系统隔离，不宣称可安全编译不可信 TeX。
+
+## 桌面生成入口与全项目代码审查（2026-10-30）
+
+- 文件路径栏“生成”、标签栏加号、原生文件菜单接入 Word/PPT 生成：当前未保存 Markdown、内置样例、本地资料、呈现/素材/字体授权、后台 Worker、诊断定位与打开输出。
+- **全量回归 306/306，通过，无跳过。** 日志 `.test-data/audit-unit-tests.log`。全量运行后修改的编译布局和撤销历史分别复测：编译 **71/71**，引擎/历史 **25/25**，日志 `.test-data/audit-compiler-tests.log`、`.test-data/engine-history-unit.log`；这些与全量用例重叠，不累加总数。类型、生产构建、独立引擎构建通过；`git diff --check` 通过。
+- **实际 Windows Electron 26 组通过**：新增生成 7、标签/目录导航 9、最终富文本/源码/跨视图撤销 10。页面/控制台错误均为空。日志 `.test-data/compiler-desktop-final.log`、`.test-data/compiler-navigation-ui.log`、`.test-data/compiler-final-rich.log`。使用独立测试配置；打开结果调用以 shell spy 检查，没有打开用户 Office 文档。
+- **性能同机前后对比**：1,000 Mark 打开 1,490→1,351 ms，输入到两帧中位 30→31 ms、最大 71→59 ms；输入期间大于 50 ms 的主线程长任务 2→0。100 Mark 中位 14→9 ms、最大 19→16 ms，打开 395→399 ms。各 16 次输入；普通大文档中位基本持平，不宣称全面提速。日志 `.test-data/audit-editor-before.log`、`.test-data/audit-editor-after.log`。
+- 未变长列表重复解析、Git 同请求重复读取、引用链重复展开、通用历史大小扫描已优化；恢复副本改为原子写入，隐藏元数据定位边界已修。局部基准、代码精简及剩余长列表内部编辑热点见 [审查报告](PROJECT-AUDIT.md)。
+- npm 在线安全数据库报告 **0 个已知漏洞**，证据 `.test-data/audit-dependencies.json`。没有新增第三方依赖。
+- 新版 `npm run dev` 预览已实际启动并通过原生窗口检查，现有配置恢复，“生成 Word / PPT”面板及内置示例可见。日志 `.test-data/preview-2026-10-30-dev.log`。不代表新安装包、其他系统、实体输入法或真实在线 GitHub 验收。
+
+## 首个离线文档编译闭环（2026-10-30）
+
+- 复用 Mark 身份、修订与事务，新增严格 JSON / Markdown 子集、独立内容与呈现、资源/字体校验、DOCX/PPTX 原生输出和薄 SDK/CLI。未接入现有桌面按键路径，也未开放未实现的 Office 编辑器入口。
+- 同一资料生成 **2 页 DOCX / 4 页 PPTX**；Windows WPS 12.1.0.29161 实际打开，文字/表格/图片编辑后另存、关闭、重开通过；修改一个共享事实，两类输出均由 12 更新为 18 城市。
+- 实际检查了 61 行中文表格的 4 页分页及重复表头、10000×1000 JPEG 的原生嵌入和页内比例；渲染基础全部页面、长表全部页面及更新/大图相关页面，无可见裁断或遮挡。Stage 超量报出 Mark，编译失败保留旧产物。
+- **完整单元回归 285/285 通过，无跳过**，日志 `.test-data/compiler-all-tests.log`；末轮修复非法 UTF-8 与原型同名 ID 来源问题后，**编译专项 56/56 通过**，日志 `.test-data/compiler-final-tests.log`。最终类型检查及生产构建通过，差异格式检查通过。未重复本轮范围外的实体输入法、长文档帧率或安装包验收。
+- 独立 Windows 洁净源码副本重新安装依赖后，两类 CLI 无密钥运行；无 Electron 二进制，manifest 的输入/呈现/计划/字体/资源一致。该验证不是已发布 commit 的 Git clone，也不是 macOS 验证，因此 TODO M3.4 保留部分完成。
+- 新样例见 [实际产物](../examples/compiler/generated/README.md)，详细证据、限制和命令见 [编译器验收](compiler/ACCEPTANCE.md)。AI 接入及 token 成本实验未完成；未测试的微软 Office、macOS 不能由 WPS Windows 结果推定。
+
+## 项目生命周期与独立同步操作（2026-10-30）
+
+- 项目入口统一为新建、打开本地、从 GitHub 链接获取。新建不初始化 Git，已有同源副本核对实际 origin 后可复用；另建副本要求不存在的目标目录。移除只取消登记；重新定位复制设备草稿/归档并保留旧恢复数据，目标冲突拒绝覆盖。原目录已丢失时仍能继续保护最新草稿。
+- Git 检查、更新、上传和显式发布分支分开。绑定不切换本地分支；更新前后检查工作区，检查所有未保存标签；更新冻结编辑并刷新缓存。上传验证快进关系和远端版本条件，缺失分支不会自动重建。检查按来源/分支记录，五分钟过期；后台网络等待不阻塞本地提交。
+- **类型检查与生产构建通过。230 项测试分批通过：35 项 Git 用例，以及最终全量非 Git 文件中的 195 项用例（包含 3 项 GitHub 地址规范化用例），无失败、无跳过。** 覆盖目录独占创建、元数据迁移及回滚边界、失联目录草稿、别名与路径保护、暂存区隔离、克隆、异名跟踪分支、不同历史、删除分支竞态、缓存过期和后台检查期间提交。
+- **实际 Windows Electron 项目生命周期检查 6 组通过**，使用独立测试配置和本地裸仓库：三入口、GitHub 地址身份匹配与复用、云盘链接提示、移动后草稿和归档恢复、移除后的独立草稿、全部标签保护、等待更新期间只读、合并不上传，以及单独上传。渲染器错误为 0。脚本 `scripts/project-lifecycle-smoke.mjs`，日志 `.test-data/project-lifecycle-smoke.log`，成功目录 `.test-data/project-lifecycle-4CbWa8`。
+- **原项目回归 14 组通过**：首次保存与取消、拒绝覆盖、强退恢复、保存期间继续输入、版本失败后重试、切项目草稿隔离、目录改名后恢复关闭标签、同名重建的独立撤销、启动选择及多份 Markdown/Formula 草稿恢复。日志 `.test-data/project-regression-smoke.log`，成功目录 `.test-data/projects-gWnAAS`。
+- 独立窗口复查 1440×940、920×620 的浅色/深色添加项目对话框，未发现横向溢出，Esc 关闭正常。截图目录 `.test-data/project-visual-opkIHi`；截取时结束入场动画以检查稳定布局。22 个桌面脚本通过语法检查，差异格式检查通过。
+- 本轮没有操作真实 GitHub 账号、公网仓库或用户文档，也未重新验收安装包、物理中文输入法、macOS/Linux。GitHub 身份匹配使用真实本地仓库配置，远端授权失败提示在该界面用例中模拟；克隆、拉取、合并和上传测试使用本机裸仓库。坚果云仅接入客户端已同步的本地目录，WebDAV 和分享链接导入未实现。
 
 ## 浅色一致性与提交前复查（2026-10-28）
 

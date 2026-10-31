@@ -1,0 +1,20 @@
+{
+  "format": "markflow",
+  "version": 99,
+  "documentId": "invalid-fixture",
+  "revision": 1,
+  "marks": [
+    {
+      "id": "invalid-mark",
+      "content": {
+        "kind": "paragraph",
+        "runs": [
+          {
+            "text": "invalid fixture"
+          }
+        ]
+      }
+    }
+  ],
+  "assets": []
+}

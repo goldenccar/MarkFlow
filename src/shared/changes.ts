@@ -4,13 +4,21 @@ import { markBody } from './marks'
 const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
 
 function characters(text: string): string[] {
-  return Array.from(segmenter.segment(text.replace(/\r\n?/g, '\n')), part => part.segment)
+  return Array.from(segmenter.segment(text), part => part.segment)
 }
 
 /** Strip equal edges, then use Myers diff: adjacent edits form one replacement; equal text ends it. */
 export function changeCount(baseline: string, current: string, options?: { timeout: number }): number {
-  baseline = markBody(baseline); current = markBody(current)
+  baseline = markBody(baseline).replace(/\r\n?/g, '\n'); current = markBody(current).replace(/\r\n?/g, '\n')
   if (baseline === current) return 0
+  // A newline is a grapheme boundary: unchanged whole lines need no segmentation.
+  let prefix = 0, suffix = 0
+  while (prefix < baseline.length && prefix < current.length && baseline[prefix] === current[prefix]) prefix++
+  prefix = prefix ? baseline.lastIndexOf('\n', prefix - 1) + 1 : 0
+  while (suffix < baseline.length - prefix && suffix < current.length - prefix && baseline[baseline.length - suffix - 1] === current[current.length - suffix - 1]) suffix++
+  const boundary = baseline.indexOf('\n', baseline.length - suffix)
+  suffix = boundary < 0 ? 0 : baseline.length - boundary
+  baseline = baseline.slice(prefix, baseline.length - suffix); current = current.slice(prefix, current.length - suffix)
   const before = characters(baseline)
   const after = characters(current)
   let start = 0

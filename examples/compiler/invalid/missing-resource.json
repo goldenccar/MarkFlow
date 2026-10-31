@@ -1,0 +1,22 @@
+{
+  "format": "markflow",
+  "version": 1,
+  "documentId": "invalid-fixture",
+  "revision": 1,
+  "marks": [
+    {
+      "id": "invalid-mark",
+      "content": {
+        "kind": "image",
+        "assetId": "missing-image",
+        "alt": "intentionally missing"
+      }
+    }
+  ],
+  "assets": [
+    {
+      "id": "missing-image",
+      "path": "assets/does-not-exist.png"
+    }
+  ]
+}

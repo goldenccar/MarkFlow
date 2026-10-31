@@ -1,0 +1,13 @@
+[
+  {
+    "id": "texlive-2026.10.1-win32-x64",
+    "version": "2026.10.1",
+    "platform": "win32",
+    "arch": "x64",
+    "filename": "texlive-2026.10.1-win32-x64-6d9586d46165.mftex.gz",
+    "sha256": "499b89551cb6ec1723f5f5bb5d100a28d9870faced48f7633e6fcbba19e9765e",
+    "manifestSha256": "6d9586d46165bcef57b64848517093f12374190f274af3a60e6fc06719fb5471",
+    "bytes": 357080995,
+    "expandedBytes": 759240729
+  }
+]
